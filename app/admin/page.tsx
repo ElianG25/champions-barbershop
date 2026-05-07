@@ -14,8 +14,30 @@ import {
 } from '@/lib/booking'
 import { buildThemeStyle } from '@/lib/theme'
 import { NeutralLoader } from '@/components/ui/NeutralLoader'
+import {
+    CalendarDays,
+    CheckCircle2,
+    Clock,
+    MessageCircle,
+    RefreshCcw,
+    Search,
+    XCircle,
+    Users,
+    Scissors,
+    Settings,
+    CalendarClock,
+} from 'lucide-react'
 
 type Section = 'home' | 'appointments' | 'services' | 'schedule' | 'settings'
+type AppointmentFilter =
+    | 'today'
+    | 'tomorrow'
+    | 'week'
+    | 'pending'
+    | 'confirmed'
+    | 'completed'
+    | 'cancelled'
+    | 'all'
 type AsyncVoid = () => Promise<void>
 
 const NAV_ITEMS: { id: Section; label: string; mobileLabel: string }[] = [
@@ -34,6 +56,12 @@ const SECTION_TITLES: Record<Section, string> = {
     settings: 'Ajustes',
 }
 
+const PHONE_COUNTRIES = [
+    { code: 'ES', label: 'España', prefix: '+34', digits: 9 },
+    { code: 'DO', label: 'Rep. Dominicana', prefix: '+1', digits: 10 },
+    { code: 'US', label: 'Estados Unidos', prefix: '+1', digits: 10 },
+]
+
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 export default function AdminPage() {
@@ -45,6 +73,9 @@ export default function AdminPage() {
     const [services, setServices] = useState<any[]>([])
     const [availability, setAvailability] = useState<any[]>([])
     const [rescheduleAppointment, setRescheduleAppointment] = useState<any>(null)
+    const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>('today')
+    const [calendarOpen, setCalendarOpen] = useState(false)
+    const [whatsappAppointment, setWhatsappAppointment] = useState<any>(null)
 
     useEffect(() => {
         bootstrap()
@@ -112,38 +143,36 @@ export default function AdminPage() {
     }
 
     async function updateAppointmentStatus(id: string, status: string) {
-        async function runUpdate() {
-            const { error } = await supabase
-                .from('appointments')
-                .update({ status })
-                .eq('id', id)
-
-            if (error) {
-                notify('No se pudo actualizar la cita', 'Intenta nuevamente.', 'danger')
-                return
-            }
-
-            await loadData()
-
-            notify(
-                status === 'cancelled' ? 'Cita cancelada' : 'Cita actualizada',
-                'La cita fue actualizada correctamente.',
-                'success'
-            )
+        const labels: Record<string, string> = {
+            confirmed: 'confirmar',
+            cancelled: 'cancelar',
+            completed: 'marcar como completada',
         }
 
-        if (status === 'cancelled') {
-            askConfirm({
-                title: 'Cancelar cita',
-                message: 'Esta acción afectará la reserva del cliente.',
-                tone: 'danger',
-                onConfirm: runUpdate,
-            })
+        askConfirm({
+            title: 'Confirmar acción',
+            message: `¿Seguro que quieres ${labels[status] || 'actualizar'} esta cita?`,
+            tone: status === 'cancelled' ? 'danger' : 'info',
+            onConfirm: async () => {
+                const { error } = await supabase
+                    .from('appointments')
+                    .update({ status })
+                    .eq('id', id)
 
-            return
-        }
+                if (error) {
+                    notify('No se pudo actualizar la cita', 'Intenta nuevamente.', 'danger')
+                    return
+                }
 
-        await runUpdate()
+                await loadData()
+
+                notify(
+                    'Cita actualizada',
+                    'La cita fue actualizada correctamente. Ahora puedes notificar al cliente por WhatsApp.',
+                    'success'
+                )
+            },
+        })
     }
 
     const stats = useMemo(() => {
@@ -164,6 +193,33 @@ export default function AdminPage() {
             revenue,
         }
     }, [appointments, services.length])
+
+    function getFilteredAppointments() {
+        const today = new Date()
+        const todayStr = today.toISOString().split('T')[0]
+
+        const tomorrow = new Date(today)
+        tomorrow.setDate(today.getDate() + 1)
+        const tomorrowStr = tomorrow.toISOString().split('T')[0]
+
+        const weekEnd = new Date(today)
+        weekEnd.setDate(today.getDate() + 7)
+        const weekEndStr = weekEnd.toISOString().split('T')[0]
+
+        return appointments.filter((appointment) => {
+            if (appointmentFilter === 'today') return appointment.date === todayStr
+            if (appointmentFilter === 'tomorrow') return appointment.date === tomorrowStr
+            if (appointmentFilter === 'week') {
+                return appointment.date >= todayStr && appointment.date <= weekEndStr
+            }
+            if (appointmentFilter === 'pending') return appointment.status === 'pending'
+            if (appointmentFilter === 'confirmed') return appointment.status === 'confirmed'
+            if (appointmentFilter === 'completed') return appointment.status === 'completed'
+            if (appointmentFilter === 'cancelled') return appointment.status === 'cancelled'
+
+            return true
+        })
+    }
 
     if (loading || !business) {
         return (
@@ -238,10 +294,15 @@ export default function AdminPage() {
 
                         {section === 'appointments' && (
                             <AppointmentsSection
-                                appointments={appointments}
+                                appointments={getFilteredAppointments()}
+                                allAppointments={appointments}
                                 business={business}
+                                filter={appointmentFilter}
+                                setFilter={setAppointmentFilter}
                                 updateAppointmentStatus={updateAppointmentStatus}
                                 onReschedule={setRescheduleAppointment}
+                                onOpenCalendar={() => setCalendarOpen(true)}
+                                onNotify={setWhatsappAppointment}
                             />
                         )}
 
@@ -296,7 +357,132 @@ export default function AdminPage() {
                     onClose={() => setDialog(null)}
                 />
             )}
+            {calendarOpen && (
+                <CalendarAppointmentsModal
+                    appointments={appointments}
+                    business={business}
+                    onClose={() => setCalendarOpen(false)}
+                />
+            )}
+
+            {whatsappAppointment && (
+                <WhatsAppNotifyModal
+                    appointment={whatsappAppointment}
+                    business={business}
+                    onClose={() => setWhatsappAppointment(null)}
+                />
+            )}
         </main>
+    )
+}
+
+function WhatsAppNotifyModal({
+    appointment,
+    business,
+    onClose,
+}: {
+    appointment: any
+    business: any
+    onClose: () => void
+}) {
+    const message = `Hola ${appointment.customer_name}, tu cita en ${business?.name || 'nuestro negocio'} está programada para el ${formatDate(appointment.date)} a las ${formatTime(appointment.start_time, business?.time_format || '24h')}. Servicio: ${appointment.services?.name || 'Servicio'}.`
+
+    const phone = String(appointment.customer_phone || '').replace(/\D/g, '')
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+
+    return (
+        <AdminModal
+            eyebrow="WhatsApp"
+            title="Notificar cliente"
+            onClose={onClose}
+            footer={
+                <ModalFooter
+                    onCancel={onClose}
+                    onConfirm={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                    confirmText="Abrir WhatsApp"
+                />
+            }
+        >
+            <p className="text-sm leading-7 text-[var(--app-muted)]">
+                Se abrirá WhatsApp con un mensaje listo para enviar al cliente.
+            </p>
+
+            <div className="mt-5 border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-sm leading-7">{message}</p>
+            </div>
+        </AdminModal>
+    )
+}
+
+function CalendarAppointmentsModal({
+    appointments,
+    business,
+    onClose,
+}: {
+    appointments: any[]
+    business: any
+    onClose: () => void
+}) {
+    const today = new Date().toISOString().split('T')[0]
+    const [selectedDate, setSelectedDate] = useState(today)
+
+    const days = Array.from({ length: 14 }).map((_, index) => {
+        const date = new Date()
+        date.setDate(date.getDate() + index)
+        return date.toISOString().split('T')[0]
+    })
+
+    const dayAppointments = appointments.filter((appointment) => appointment.date === selectedDate)
+
+    return (
+        <AdminModal
+            eyebrow="Calendario"
+            title="Vista de citas"
+            onClose={onClose}
+        >
+            <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+                <div className="grid gap-2">
+                    {days.map((date) => (
+                        <button
+                            key={date}
+                            onClick={() => setSelectedDate(date)}
+                            className={`border px-4 py-3 text-left text-sm font-semibold transition ${selectedDate === date
+                                ? 'border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)]'
+                                : 'border-white/10 text-[var(--app-muted)] hover:border-[var(--brand)]'
+                                }`}
+                        >
+                            {formatDate(date)}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="space-y-3">
+                    {dayAppointments.map((appointment) => (
+                        <div
+                            key={appointment.id}
+                            className="border border-white/10 bg-white/[0.04] p-4"
+                        >
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="font-semibold">{appointment.customer_name}</p>
+                                    <p className="mt-1 text-sm text-[var(--app-muted)]">
+                                        {appointment.services?.name || 'Servicio'} ·{' '}
+                                        {formatTime(appointment.start_time, business?.time_format || '24h')}
+                                    </p>
+                                </div>
+                                <StatusBadge status={appointment.status} />
+                            </div>
+                        </div>
+                    ))}
+
+                    {dayAppointments.length === 0 && (
+                        <p className="text-sm text-[var(--app-muted)]">
+                            No hay citas para este día.
+                        </p>
+                    )}
+                </div>
+            </div>
+        </AdminModal>
     )
 }
 
@@ -450,29 +636,82 @@ function MobileNav({ section, setSection }: { section: Section; setSection: (sec
 
 function AppointmentsSection({
     appointments,
+    allAppointments,
     business,
+    filter,
+    setFilter,
     updateAppointmentStatus,
     onReschedule,
+    onOpenCalendar,
+    onNotify,
 }: {
     appointments: any[]
+    allAppointments: any[]
     business: any
+    filter: AppointmentFilter
+    setFilter: (filter: AppointmentFilter) => void
     updateAppointmentStatus: (id: string, status: string) => void
     onReschedule: (appointment: any) => void
+    onOpenCalendar: () => void
+    onNotify: (appointment: any) => void
 }) {
+    const filters: { id: AppointmentFilter; label: string }[] = [
+        { id: 'today', label: 'Hoy' },
+        { id: 'tomorrow', label: 'Mañana' },
+        { id: 'week', label: 'Semana' },
+        { id: 'pending', label: 'Pendientes' },
+        { id: 'confirmed', label: 'Confirmadas' },
+        { id: 'completed', label: 'Completadas' },
+        { id: 'cancelled', label: 'Canceladas' },
+        { id: 'all', label: 'Todas' },
+    ]
+
     return (
         <section className="animate-fade-in">
             <SectionHeader
                 eyebrow="Gestión"
                 title="Citas"
-                description="Revisa reservas, confirma pendientes, cancela o reagenda usando disponibilidad real."
+                description="Filtra, revisa, confirma, cancela o reagenda reservas usando disponibilidad real."
+                action={
+                    <button onClick={onOpenCalendar} className="btn-primary gap-2">
+                        <CalendarDays size={16} />
+                        Vista calendario
+                    </button>
+                }
             />
+
+            <div className="mt-6 overflow-x-auto border border-white/10 bg-[var(--app-surface)] p-3">
+                <div className="flex min-w-max gap-2">
+                    {filters.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => setFilter(item.id)}
+                            className={`border px-4 py-2 text-sm font-semibold transition ${filter === item.id
+                                ? 'border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)]'
+                                : 'border-white/10 text-[var(--app-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)]'
+                                }`}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-4">
+                <MiniMetric icon={<CalendarClock size={18} />} label="Mostradas" value={appointments.length} />
+                <MiniMetric icon={<Clock size={18} />} label="Pendientes" value={allAppointments.filter((a) => a.status === 'pending').length} />
+                <MiniMetric icon={<CheckCircle2 size={18} />} label="Confirmadas" value={allAppointments.filter((a) => a.status === 'confirmed').length} />
+                <MiniMetric icon={<XCircle size={18} />} label="Canceladas" value={allAppointments.filter((a) => a.status === 'cancelled').length} />
+            </div>
 
             <DataTable
                 headers={['Cliente', 'Servicio', 'Fecha', 'Hora', 'Estado', 'Acciones']}
                 rows={appointments.map((appointment) => [
                     <div key="customer">
                         <p className="font-semibold">{appointment.customer_name}</p>
-                        <p className="mt-1 text-xs text-[var(--app-muted)]">{appointment.customer_phone}</p>
+                        <p className="mt-1 text-xs text-[var(--app-muted)]">
+                            {appointment.customer_phone}
+                        </p>
                     </div>,
                     appointment.services?.name || 'Servicio',
                     formatDate(appointment.date),
@@ -484,7 +723,15 @@ function AppointmentsSection({
                                 Confirmar
                             </ActionButton>
                         )}
-                        <ActionButton onClick={() => onReschedule(appointment)}>Reagendar</ActionButton>
+
+                        <ActionButton onClick={() => onReschedule(appointment)}>
+                            Reagendar
+                        </ActionButton>
+
+                        <ActionButton onClick={() => onNotify(appointment)}>
+                            WhatsApp
+                        </ActionButton>
+
                         {appointment.status !== 'cancelled' && (
                             <ActionButton tone="danger" onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
                                 Cancelar
@@ -499,14 +746,18 @@ function AppointmentsSection({
                     <AdminCard key={appointment.id}>
                         <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
-                                <p className="truncate text-lg font-semibold">{appointment.customer_name}</p>
+                                <p className="truncate text-lg font-semibold">
+                                    {appointment.customer_name}
+                                </p>
                                 <p className="mt-1 text-sm text-[var(--app-muted)]">
                                     {appointment.services?.name || 'Servicio'}
                                 </p>
                                 <p className="mt-2 text-sm text-[var(--app-muted)]">
-                                    {formatDate(appointment.date)} · {formatTime(appointment.start_time, business?.time_format || '24h')}
+                                    {formatDate(appointment.date)} ·{' '}
+                                    {formatTime(appointment.start_time, business?.time_format || '24h')}
                                 </p>
                             </div>
+
                             <StatusBadge status={appointment.status} />
                         </div>
 
@@ -516,9 +767,15 @@ function AppointmentsSection({
                                     Confirmar cita
                                 </ActionButton>
                             )}
+
                             <ActionButton full primary onClick={() => onReschedule(appointment)}>
                                 Reagendar
                             </ActionButton>
+
+                            <ActionButton full onClick={() => onNotify(appointment)}>
+                                Notificar por WhatsApp
+                            </ActionButton>
+
                             {appointment.status !== 'cancelled' && (
                                 <ActionButton tone="danger" full onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
                                     Cancelar
@@ -529,8 +786,28 @@ function AppointmentsSection({
                 ))}
             </div>
 
-            <EmptyState show={appointments.length === 0} text="No hay citas todavía." />
+            <EmptyState show={appointments.length === 0} text="No hay citas para este filtro." />
         </section>
+    )
+}
+
+function MiniMetric({
+    icon,
+    label,
+    value,
+}: {
+    icon: React.ReactNode
+    label: string
+    value: number
+}) {
+    return (
+        <div className="border border-white/10 bg-[var(--app-surface)] p-4">
+            <div className="text-[var(--brand)]">{icon}</div>
+            <p className="mt-3 text-2xl font-semibold">{value}</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
+                {label}
+            </p>
+        </div>
     )
 }
 
@@ -1448,6 +1725,21 @@ function SettingsSection({
                         />
                     </div>
                 </Panel>
+                <label className="flex items-center justify-between gap-4 border border-white/10 bg-white/[0.04] px-4 py-4 opacity-60">
+                    <div>
+                        <p className="text-sm font-semibold">
+                            Varios trabajadores
+                            <span className="ml-2 border border-[var(--brand)] px-2 py-0.5 text-[10px] uppercase text-[var(--brand)]">
+                                Pronto
+                            </span>
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--app-muted)]">
+                            Permitirá asignar citas a barberos o profesionales diferentes.
+                        </p>
+                    </div>
+
+                    <input type="checkbox" disabled />
+                </label>
             </div>
 
             <div className="mt-6">
@@ -1579,6 +1871,7 @@ function RescheduleModal({
 
         setLoadingSlots(false)
     }
+
 
     async function saveReschedule() {
         if (!selectedSlot) {
