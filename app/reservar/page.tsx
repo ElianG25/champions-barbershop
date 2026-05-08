@@ -14,6 +14,9 @@ import {
 import { buildThemeStyle } from '@/lib/theme'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import { NeutralLoader } from '@/components/ui/NeutralLoader'
+import { PhoneField, isValidPhoneNumber } from '@/components/ui/PhoneField'
+import { DateSelector } from '@/components/ui/DateSelector'
+import { TimeSelector } from '@/components/ui/TimeSelector'
 
 type Step = 'service' | 'client' | 'date' | 'time'
 
@@ -85,8 +88,13 @@ export default function ReservarPage() {
   }
 
   function continueToDate() {
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setMessage('Completa tu nombre y teléfono.')
+    if (!customerName.trim()) {
+      setMessage('Completa tu nombre.')
+      return
+    }
+
+    if (!isValidPhoneNumber(customerPhone)) {
+      setMessage('Ingresa un número de teléfono válido.')
       return
     }
 
@@ -225,8 +233,13 @@ export default function ReservarPage() {
       return
     }
 
-    if (!customerName || !customerPhone) {
-      setMessage('Completa tu nombre y teléfono.')
+    if (!customerName.trim()) {
+      setMessage('Completa tu nombre.')
+      return
+    }
+
+    if (!isValidPhoneNumber(customerPhone)) {
+      setMessage('Ingresa un número de teléfono válido.')
       return
     }
 
@@ -417,7 +430,7 @@ export default function ReservarPage() {
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <Input value={customerName} onChange={setCustomerName} placeholder="Nombre completo" />
-              <Input value={customerPhone} onChange={setCustomerPhone} placeholder="Teléfono" />
+              <PhoneField value={customerPhone} onChange={setCustomerPhone} />
 
               <div className="sm:col-span-2">
                 <Input value={customerEmail} onChange={setCustomerEmail} placeholder="Email opcional" />
@@ -441,13 +454,7 @@ export default function ReservarPage() {
             disabled={!selectedService || !customerName || !customerPhone}
             onOpen={() => selectedService && customerName && customerPhone && setActiveStep('date')}
           >
-            <input
-              type="date"
-              min={minDate}
-              value={date}
-              onChange={(e) => selectDate(e.target.value)}
-              className="w-full border border-white/10 bg-white/[0.04] px-4 py-4 text-[var(--app-text)] outline-none transition focus:border-[var(--brand)]"
-            />
+            <DateSelector value={date} onChange={selectDate} days={21} />
           </AccordionPanel>
 
           <AccordionPanel
@@ -471,20 +478,12 @@ export default function ReservarPage() {
             )}
 
             {!loadingSlots && slots.length > 0 && (
-              <div className="grid grid-cols-3 gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-4 lg:grid-cols-5">
-                {slots.map((slot) => (
-                  <button
-                    key={slot}
-                    onClick={() => handleSelectSlot(slot)}
-                    className={`px-3 py-4 text-sm font-semibold transition ${selectedSlot === slot
-                      ? 'bg-[var(--brand)] text-[var(--app-bg)]'
-                      : 'bg-[var(--app-surface)] text-[var(--app-text)] hover:bg-white/[0.08]'
-                      }`}
-                  >
-                    {formatTime(slot, business?.time_format || '24h')}
-                  </button>
-                ))}
-              </div>
+              <TimeSelector
+                value={selectedSlot}
+                options={slots}
+                onChange={handleSelectSlot}
+                timeFormat={business?.time_format || '24h'}
+              />
             )}
           </AccordionPanel>
 

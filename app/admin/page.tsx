@@ -27,6 +27,17 @@ import {
     Settings,
     CalendarClock,
 } from 'lucide-react'
+import { DateSelector } from '@/components/ui/DateSelector'
+import { TimeSelector } from '@/components/ui/TimeSelector'
+import { AdminModal } from '@/components/admin/AdminModal'
+import { ModalFooter } from '@/components/admin/ModalFooter'
+import { AppDialog, type AppDialogState } from '@/components/admin/AppDialog'
+import { AdminButton } from '@/components/admin/AdminButton'
+import { AdminCard } from '@/components/admin/AdminCard'
+import { MetricCard } from '@/components/admin/MetricCard'
+import { SectionHeader } from '@/components/admin/SectionHeader'
+import { AdminPanel } from '@/components/admin/AdminPanel'
+import { StatusBadge, ActiveBadge } from '@/components/admin/StatusBadge'
 
 type Section = 'home' | 'appointments' | 'services' | 'schedule' | 'settings'
 type AppointmentFilter =
@@ -40,13 +51,18 @@ type AppointmentFilter =
     | 'all'
 type AsyncVoid = () => Promise<void>
 
-const NAV_ITEMS: { id: Section; label: string; mobileLabel: string }[] = [
-    { id: 'home', label: 'Panel', mobileLabel: 'Inicio' },
-    { id: 'appointments', label: 'Citas', mobileLabel: 'Citas' },
-    { id: 'services', label: 'Servicios', mobileLabel: 'Servicios' },
-    { id: 'schedule', label: 'Disponibilidad', mobileLabel: 'Horario' },
-    { id: 'settings', label: 'Ajustes', mobileLabel: 'Ajustes' },
-]
+const NAV_ITEMS: {
+    id: Section
+    label: string
+    mobileLabel: string
+    icon: React.ReactNode
+}[] = [
+        { id: 'home', label: 'Panel', mobileLabel: 'Inicio', icon: <CalendarClock size={16} /> },
+        { id: 'appointments', label: 'Citas', mobileLabel: 'Citas', icon: <CalendarDays size={16} /> },
+        { id: 'services', label: 'Servicios', mobileLabel: 'Servicios', icon: <Scissors size={16} /> },
+        { id: 'schedule', label: 'Disponibilidad', mobileLabel: 'Horario', icon: <Clock size={16} /> },
+        { id: 'settings', label: 'Ajustes', mobileLabel: 'Ajustes', icon: <Settings size={16} /> },
+    ]
 
 const SECTION_TITLES: Record<Section, string> = {
     home: 'Panel de control',
@@ -56,16 +72,10 @@ const SECTION_TITLES: Record<Section, string> = {
     settings: 'Ajustes',
 }
 
-const PHONE_COUNTRIES = [
-    { code: 'ES', label: 'España', prefix: '+34', digits: 9 },
-    { code: 'DO', label: 'Rep. Dominicana', prefix: '+1', digits: 10 },
-    { code: 'US', label: 'Estados Unidos', prefix: '+1', digits: 10 },
-]
-
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 export default function AdminPage() {
-    const [dialog, setDialog] = useState<any>(null)
+    const [dialog, setDialog] = useState<AppDialogState | null>(null)
     const [section, setSection] = useState<Section>('home')
     const [loading, setLoading] = useState(true)
     const [business, setBusiness] = useState<any>(null)
@@ -385,7 +395,20 @@ function WhatsAppNotifyModal({
     business: any
     onClose: () => void
 }) {
-    const message = `Hola ${appointment.customer_name}, tu cita en ${business?.name || 'nuestro negocio'} está programada para el ${formatDate(appointment.date)} a las ${formatTime(appointment.start_time, business?.time_format || '24h')}. Servicio: ${appointment.services?.name || 'Servicio'}.`
+    const message = `✨ *¡Hola ${appointment.customer_name}!* ✨
+
+📅 *Tu cita ha sido confirmada*
+
+🏢 *Negocio:* ${business?.name || 'Nuestro negocio'}
+🗓️ *Fecha:* ${formatDate(appointment.date)}
+🕒 *Hora:* ${formatTime(
+        appointment.start_time,
+        business?.time_format || '24h'
+    )}
+💇 *Servicio:* ${appointment.services?.name || 'Servicio'}
+
+✅ Te esperamos.  
+📲 Si necesitas realizar algún cambio, contáctanos con anticipación.`;
 
     const phone = String(appointment.customer_phone || '').replace(/\D/g, '')
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
@@ -486,61 +509,6 @@ function CalendarAppointmentsModal({
     )
 }
 
-function AppDialog({
-    dialog,
-    onClose,
-}: {
-    dialog: any
-    onClose: () => void
-}) {
-    async function handleConfirm() {
-        await dialog.onConfirm?.()
-        onClose()
-    }
-
-    return (
-        <div className="fixed inset-0 z-[200] flex items-end bg-black/70 p-0 sm:items-center sm:justify-center sm:p-5">
-            <section className="animate-modal-in w-full border border-white/10 bg-[var(--app-bg)] p-5 text-[var(--app-text)] shadow-2xl sm:max-w-md sm:p-6">
-                <p
-                    className={`text-xs font-semibold uppercase tracking-[0.3em] ${dialog.tone === 'danger' ? 'text-red-300' : 'text-[var(--brand)]'
-                        }`}
-                >
-                    {dialog.type === 'confirm' ? 'Confirmación' : 'Aviso'}
-                </p>
-
-                <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                    {dialog.title}
-                </h2>
-
-                {dialog.message && (
-                    <p className="mt-3 text-sm leading-6 text-[var(--app-muted)]">
-                        {dialog.message}
-                    </p>
-                )}
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    {dialog.type === 'confirm' && (
-                        <button onClick={onClose} className="btn-secondary">
-                            Cancelar
-                        </button>
-                    )}
-
-                    <button
-                        onClick={dialog.type === 'confirm' ? handleConfirm : onClose}
-                        className={
-                            dialog.tone === 'danger'
-                                ? 'btn-danger'
-                                : 'btn-primary'
-                        }
-                    >
-                        {dialog.type === 'confirm' ? 'Confirmar' : 'Entendido'}
-                    </button>
-                </div>
-            </section>
-        </div>
-    )
-}
-
 function HomeSection({
     stats,
     business,
@@ -564,10 +532,10 @@ function HomeSection({
             />
 
             <div className="mt-6 grid gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Citas hoy" value={stats.today} />
-                <StatCard label="Pendientes" value={stats.pending} />
-                <StatCard label="Servicios" value={stats.services} />
-                <StatCard
+                <MetricCard label="Citas hoy" value={stats.today} />
+                <MetricCard label="Pendientes" value={stats.pending} />
+                <MetricCard label="Servicios" value={stats.services} />
+                <MetricCard
                     label="Ingresos hoy"
                     value={formatCurrency(stats.revenue, business?.currency || 'EUR')}
                 />
@@ -606,7 +574,10 @@ function DesktopNav({ section, setSection }: { section: Section; setSection: (se
                         : 'border-transparent text-[var(--app-muted)] hover:border-white/10 hover:text-[var(--app-text)]'
                         }`}
                 >
-                    {item.label}
+                    <span className="inline-flex items-center gap-3">
+                        {item.icon}
+                        {item.label}
+                    </span>
                 </button>
             ))}
         </nav>
@@ -626,7 +597,10 @@ function MobileNav({ section, setSection }: { section: Section; setSection: (sec
                             : 'text-[var(--app-muted)] hover:bg-white/[0.06]'
                             }`}
                     >
-                        {item.mobileLabel}
+                        <span className="flex flex-col items-center gap-1">
+                            {item.icon}
+                            {item.mobileLabel}
+                        </span>
                     </button>
                 ))}
             </div>
@@ -698,10 +672,10 @@ function AppointmentsSection({
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-4">
-                <MiniMetric icon={<CalendarClock size={18} />} label="Mostradas" value={appointments.length} />
-                <MiniMetric icon={<Clock size={18} />} label="Pendientes" value={allAppointments.filter((a) => a.status === 'pending').length} />
-                <MiniMetric icon={<CheckCircle2 size={18} />} label="Confirmadas" value={allAppointments.filter((a) => a.status === 'confirmed').length} />
-                <MiniMetric icon={<XCircle size={18} />} label="Canceladas" value={allAppointments.filter((a) => a.status === 'cancelled').length} />
+                <MetricCard icon={<CalendarClock size={18} />} label="Mostradas" value={appointments.length} />
+                <MetricCard icon={<Clock size={18} />} label="Pendientes" value={allAppointments.filter((a) => a.status === 'pending').length} />
+                <MetricCard icon={<CheckCircle2 size={18} />} label="Confirmadas" value={allAppointments.filter((a) => a.status === 'confirmed').length} />
+                <MetricCard icon={<XCircle size={18} />} label="Canceladas" value={allAppointments.filter((a) => a.status === 'cancelled').length} />
             </div>
 
             <DataTable
@@ -719,23 +693,23 @@ function AppointmentsSection({
                     <StatusBadge key="status" status={appointment.status} />,
                     <RowActions key="actions">
                         {appointment.status === 'pending' && (
-                            <ActionButton tone="success" onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}>
+                            <AdminButton tone="success" onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}>
                                 Confirmar
-                            </ActionButton>
+                            </AdminButton>
                         )}
 
-                        <ActionButton onClick={() => onReschedule(appointment)}>
+                        <AdminButton onClick={() => onReschedule(appointment)}>
                             Reagendar
-                        </ActionButton>
+                        </AdminButton>
 
-                        <ActionButton onClick={() => onNotify(appointment)}>
+                        <AdminButton onClick={() => onNotify(appointment)}>
                             WhatsApp
-                        </ActionButton>
+                        </AdminButton>
 
                         {appointment.status !== 'cancelled' && (
-                            <ActionButton tone="danger" onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
+                            <AdminButton tone="danger" onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
                                 Cancelar
-                            </ActionButton>
+                            </AdminButton>
                         )}
                     </RowActions>,
                 ])}
@@ -763,23 +737,23 @@ function AppointmentsSection({
 
                         <div className="mt-5 grid gap-2">
                             {appointment.status === 'pending' && (
-                                <ActionButton tone="success" full onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}>
+                                <AdminButton tone="success" full onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}>
                                     Confirmar cita
-                                </ActionButton>
+                                </AdminButton>
                             )}
 
-                            <ActionButton full primary onClick={() => onReschedule(appointment)}>
+                            <AdminButton full primary onClick={() => onReschedule(appointment)}>
                                 Reagendar
-                            </ActionButton>
+                            </AdminButton>
 
-                            <ActionButton full onClick={() => onNotify(appointment)}>
+                            <AdminButton full onClick={() => onNotify(appointment)}>
                                 Notificar por WhatsApp
-                            </ActionButton>
+                            </AdminButton>
 
                             {appointment.status !== 'cancelled' && (
-                                <ActionButton tone="danger" full onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
+                                <AdminButton tone="danger" full onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
                                     Cancelar
-                                </ActionButton>
+                                </AdminButton>
                             )}
                         </div>
                     </AdminCard>
@@ -788,26 +762,6 @@ function AppointmentsSection({
 
             <EmptyState show={appointments.length === 0} text="No hay citas para este filtro." />
         </section>
-    )
-}
-
-function MiniMetric({
-    icon,
-    label,
-    value,
-}: {
-    icon: React.ReactNode
-    label: string
-    value: number
-}) {
-    return (
-        <div className="border border-white/10 bg-[var(--app-surface)] p-4">
-            <div className="text-[var(--brand)]">{icon}</div>
-            <p className="mt-3 text-2xl font-semibold">{value}</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
-                {label}
-            </p>
-        </div>
     )
 }
 
@@ -889,10 +843,10 @@ function ServicesSection({
                     </span>,
                     <ActiveBadge key="active" active={service.is_active} />,
                     <RowActions key="actions">
-                        <ActionButton onClick={() => openEditModal(service)}>Editar</ActionButton>
-                        <ActionButton tone="danger" onClick={() => deleteService(service.id)}>
+                        <AdminButton onClick={() => openEditModal(service)}>Editar</AdminButton>
+                        <AdminButton tone="danger" onClick={() => deleteService(service.id)}>
                             Eliminar
-                        </ActionButton>
+                        </AdminButton>
                     </RowActions>,
                 ])}
             />
@@ -915,12 +869,12 @@ function ServicesSection({
                         </p>
 
                         <div className="mt-5 grid grid-cols-2 gap-2">
-                            <ActionButton primary full onClick={() => openEditModal(service)}>
+                            <AdminButton primary full onClick={() => openEditModal(service)}>
                                 Editar
-                            </ActionButton>
-                            <ActionButton tone="danger" full onClick={() => deleteService(service.id)}>
+                            </AdminButton>
+                            <AdminButton tone="danger" full onClick={() => deleteService(service.id)}>
                                 Eliminar
-                            </ActionButton>
+                            </AdminButton>
                         </div>
                     </AdminCard>
                 ))}
@@ -1091,6 +1045,7 @@ function ScheduleSection({
     const [newDayOff, setNewDayOff] = useState('')
     const [newDayOffReason, setNewDayOffReason] = useState('')
     const [loading, setLoading] = useState(false)
+    const [editingBreak, setEditingBreak] = useState<any | null>(null)
 
     useEffect(() => {
         loadAvailabilityExtras()
@@ -1263,24 +1218,17 @@ function ScheduleSection({
         })
     }
 
-    async function createBreak() {
+    function createBreak() {
         const today = new Date().toISOString().split('T')[0]
 
-        const { error } = await supabase.from('breaks').insert({
+        setEditingBreak({
+            id: null,
             name: 'Descanso',
             date: today,
             start_time: '14:00',
             end_time: '15:00',
             is_active: true,
         })
-
-        if (error) {
-            notify('No se pudo crear el bloqueo', 'Intenta nuevamente.', 'danger')
-            return
-        }
-
-        await loadAvailabilityExtras()
-        notify('Bloqueo creado', 'Ahora puedes editar la fecha, hora y motivo.', 'success')
     }
 
     async function updateBreak(breakItem: any) {
@@ -1381,7 +1329,7 @@ function ScheduleSection({
             />
 
             <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                <Panel
+                <AdminPanel
                     title="Horario semanal"
                     description="Define qué días están disponibles para reservas."
                 >
@@ -1435,33 +1383,33 @@ function ScheduleSection({
                                                 />
                                             </FieldLabel>
 
-                                            <ActionButton
+                                            <AdminButton
                                                 tone="danger"
                                                 full
                                                 onClick={() => deleteRule(rule.id)}
                                             >
                                                 Cerrar
-                                            </ActionButton>
+                                            </AdminButton>
                                         </>
                                     ) : (
                                         <div className="lg:col-span-3 lg:justify-self-end">
-                                            <ActionButton
+                                            <AdminButton
                                                 primary
                                                 full
                                                 onClick={() => createRule(index + 1)}
                                             >
                                                 Abrir
-                                            </ActionButton>
+                                            </AdminButton>
                                         </div>
                                     )}
                                 </div>
                             )
                         })}
                     </div>
-                </Panel>
+                </AdminPanel>
 
                 <div className="space-y-6">
-                    <Panel
+                    <AdminPanel
                         title="Días libres"
                         description="Vacaciones, feriados o días completos sin reservas."
                     >
@@ -1502,12 +1450,12 @@ function ScheduleSection({
                                         </p>
                                     </div>
 
-                                    <ActionButton
+                                    <AdminButton
                                         tone="danger"
                                         onClick={() => deleteDayOff(dayOff.id)}
                                     >
                                         Eliminar
-                                    </ActionButton>
+                                    </AdminButton>
                                 </div>
                             ))}
 
@@ -1515,9 +1463,9 @@ function ScheduleSection({
                                 <InlineEmpty text="No hay días libres configurados." />
                             )}
                         </div>
-                    </Panel>
+                    </AdminPanel>
 
-                    <Panel
+                    <AdminPanel
                         title="Bloqueos y descansos"
                         description="Almuerzos, pausas o ausencias parciales."
                         action={
@@ -1529,84 +1477,30 @@ function ScheduleSection({
                         <div className="divide-y divide-white/10">
                             {breaks.map((breakItem) => (
                                 <div key={breakItem.id} className="p-5">
-                                    <div className="grid gap-3">
-                                        <input
-                                            type="date"
-                                            value={breakItem.date || ''}
-                                            onChange={(event) =>
-                                                updateBreakLocal(breakItem.id, {
-                                                    date: event.target.value,
-                                                })
-                                            }
-                                            onBlur={() => updateBreak(breakItem)}
-                                            className="admin-input py-3"
-                                        />
+                                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                                        <div>
+                                            <p className="font-semibold">{breakItem.name}</p>
 
-                                        <input
-                                            value={breakItem.name || ''}
-                                            onChange={(event) =>
-                                                updateBreakLocal(breakItem.id, {
-                                                    name: event.target.value,
-                                                })
-                                            }
-                                            onBlur={() => updateBreak(breakItem)}
-                                            placeholder="Nombre del bloqueo"
-                                            className="admin-input py-3 font-semibold"
-                                        />
+                                            <p className="mt-1 text-sm text-[var(--app-muted)]">
+                                                {formatDate(breakItem.date)} ·{' '}
+                                                {formatTime(breakItem.start_time, business?.time_format || '24h')} -{' '}
+                                                {formatTime(breakItem.end_time, business?.time_format || '24h')}
+                                            </p>
 
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <FieldLabel compact label="Desde">
-                                                <input
-                                                    type="time"
-                                                    value={String(breakItem.start_time).slice(0, 5)}
-                                                    onChange={(event) =>
-                                                        updateBreakLocal(breakItem.id, {
-                                                            start_time: event.target.value,
-                                                        })
-                                                    }
-                                                    onBlur={() => updateBreak(breakItem)}
-                                                    className="admin-input py-3"
-                                                />
-                                            </FieldLabel>
-
-                                            <FieldLabel compact label="Hasta">
-                                                <input
-                                                    type="time"
-                                                    value={String(breakItem.end_time).slice(0, 5)}
-                                                    onChange={(event) =>
-                                                        updateBreakLocal(breakItem.id, {
-                                                            end_time: event.target.value,
-                                                        })
-                                                    }
-                                                    onBlur={() => updateBreak(breakItem)}
-                                                    className="admin-input py-3"
-                                                />
-                                            </FieldLabel>
+                                            <p className="mt-2 text-xs text-[var(--app-muted)]">
+                                                {breakItem.is_active ? 'Activo' : 'Inactivo'}
+                                            </p>
                                         </div>
 
-                                        <p className="text-xs text-[var(--app-muted)]">
-                                            Visible como bloqueo:{' '}
-                                            {formatTime(breakItem.start_time, business?.time_format || '24h')} -{' '}
-                                            {formatTime(breakItem.end_time, business?.time_format || '24h')}
-                                        </p>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <AdminButton onClick={() => setEditingBreak(breakItem)}>
+                                                Editar
+                                            </AdminButton>
 
-                                        <ToggleField
-                                            label="Bloqueo activo"
-                                            checked={Boolean(breakItem.is_active)}
-                                            onChange={async (checked) => {
-                                                const updated = { ...breakItem, is_active: checked }
-                                                updateBreakLocal(breakItem.id, { is_active: checked })
-                                                await updateBreak(updated)
-                                            }}
-                                        />
-
-                                        <ActionButton
-                                            tone="danger"
-                                            full
-                                            onClick={() => deleteBreak(breakItem.id)}
-                                        >
-                                            Eliminar bloqueo
-                                        </ActionButton>
+                                            <AdminButton tone="danger" onClick={() => deleteBreak(breakItem.id)}>
+                                                Eliminar
+                                            </AdminButton>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -1615,7 +1509,22 @@ function ScheduleSection({
                                 <InlineEmpty text="No hay bloqueos configurados." />
                             )}
                         </div>
-                    </Panel>
+
+                        {editingBreak && (
+                            <BreakFormModal
+                                item={editingBreak}
+                                business={business}
+                                onClose={() => setEditingBreak(null)}
+                                onSaved={async () => {
+                                    setEditingBreak(null)
+                                    await loadAvailabilityExtras()
+                                    await reload()
+                                }}
+                                notify={notify}
+                                askConfirm={askConfirm}
+                            />
+                        )}
+                    </AdminPanel>
                 </div>
             </div>
         </section>
@@ -1679,7 +1588,7 @@ function SettingsSection({
             />
 
             <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_0.85fr]">
-                <Panel title="Información pública" description="Datos visibles en la landing y en el flujo de reserva.">
+                <AdminPanel title="Información pública" description="Datos visibles en la landing y en el flujo de reserva.">
                     <div className="grid gap-4 p-5 md:grid-cols-2">
                         <TextField label="Nombre" value={business?.name || ''} onChange={(name) => updateBusinessLocal({ name })} />
                         <TextField label="Teléfono" value={business?.phone || ''} onChange={(phone) => updateBusinessLocal({ phone })} />
@@ -1692,9 +1601,9 @@ function SettingsSection({
                             <TextareaField label="Dirección" value={business?.address || ''} onChange={(address) => updateBusinessLocal({ address })} />
                         </div>
                     </div>
-                </Panel>
+                </AdminPanel>
 
-                <Panel title="Reservas" description="Controla cómo se crean y muestran las citas.">
+                <AdminPanel title="Reservas" description="Controla cómo se crean y muestran las citas.">
                     <div className="space-y-3 p-5">
                         <ToggleField
                             label="Reservas activas"
@@ -1724,7 +1633,7 @@ function SettingsSection({
                             onChange={(auto_confirm_appointments) => updateBusinessLocal({ auto_confirm_appointments })}
                         />
                     </div>
-                </Panel>
+                </AdminPanel>
                 <label className="flex items-center justify-between gap-4 border border-white/10 bg-white/[0.04] px-4 py-4 opacity-60">
                     <div>
                         <p className="text-sm font-semibold">
@@ -1743,14 +1652,14 @@ function SettingsSection({
             </div>
 
             <div className="mt-6">
-                <Panel title="Paleta visual" description="Cambia los colores de la landing y del panel.">
+                <AdminPanel title="Paleta visual" description="Cambia los colores de la landing y del panel.">
                     <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
                         <ColorInput label="Color principal" value={business?.primary_color || '#d4af37'} onChange={(primary_color) => updateBusinessLocal({ primary_color })} />
                         <ColorInput label="Fondo" value={business?.background_color || '#0a0a0a'} onChange={(background_color) => updateBusinessLocal({ background_color })} />
                         <ColorInput label="Superficie" value={business?.surface_color || '#171717'} onChange={(surface_color) => updateBusinessLocal({ surface_color })} />
                         <ColorInput label="Texto" value={business?.text_color || '#ffffff'} onChange={(text_color) => updateBusinessLocal({ text_color })} />
                     </div>
-                </Panel>
+                </AdminPanel>
             </div>
         </section>
     )
@@ -1959,64 +1868,6 @@ function RescheduleModal({
     )
 }
 
-function SectionHeader({
-    eyebrow,
-    title,
-    description,
-    action,
-}: {
-    eyebrow: string
-    title: string
-    description: string
-    action?: React.ReactNode
-}) {
-    return (
-        <div className="flex flex-col justify-between gap-5 border-b border-white/10 pb-6 sm:flex-row sm:items-end">
-            <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
-                    {eyebrow}
-                </p>
-                <h2 className="mt-3 text-4xl font-semibold tracking-[-0.05em]">{title}</h2>
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--app-muted)]">
-                    {description}
-                </p>
-            </div>
-            {action}
-        </div>
-    )
-}
-
-function Panel({
-    title,
-    description,
-    action,
-    children,
-}: {
-    title: string
-    description?: string
-    action?: React.ReactNode
-    children: React.ReactNode
-}) {
-    return (
-        <section className="overflow-hidden border border-white/10 bg-white/10">
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-[var(--app-surface)] px-5 py-4">
-                <div>
-                    <h3 className="text-lg font-semibold">{title}</h3>
-                    {description && (
-                        <p className="mt-1 text-sm text-[var(--app-muted)]">{description}</p>
-                    )}
-                </div>
-                {action}
-            </div>
-            <div className="bg-[var(--app-surface)]">{children}</div>
-        </section>
-    )
-}
-
-function AdminCard({ children }: { children: React.ReactNode }) {
-    return <div className="border border-white/10 bg-[var(--app-surface)] p-5">{children}</div>
-}
-
 function QuickAction({ title, text, onClick }: { title: string; text: string; onClick: () => void }) {
     return (
         <button
@@ -2026,15 +1877,6 @@ function QuickAction({ title, text, onClick }: { title: string; text: string; on
             <h3 className="text-lg font-semibold">{title}</h3>
             <p className="mt-2 text-sm leading-6 text-[var(--app-muted)]">{text}</p>
         </button>
-    )
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-    return (
-        <div className="bg-[var(--app-surface)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">{label}</p>
-            <p className="mt-3 text-3xl font-semibold tracking-[-0.04em]">{value}</p>
-        </div>
     )
 }
 
@@ -2075,100 +1917,6 @@ function DataTable({ headers, rows }: { headers: string[]; rows: React.ReactNode
 
 function RowActions({ children }: { children: React.ReactNode }) {
     return <div className="flex justify-end gap-2">{children}</div>
-}
-
-function ActionButton({
-    children,
-    onClick,
-    tone = 'brand',
-    primary = false,
-    full = false,
-    disabled = false,
-}: {
-    children: React.ReactNode
-    onClick?: () => void
-    tone?: 'brand' | 'success' | 'danger'
-    primary?: boolean
-    full?: boolean
-    disabled?: boolean
-}) {
-    const toneClasses = {
-        brand: 'border-[var(--brand)] text-[var(--brand)] hover:bg-white/[0.06]',
-        success: 'border-emerald-400/30 text-emerald-300 hover:bg-emerald-400/10',
-        danger: 'border-red-400/30 text-red-300 hover:bg-red-400/10',
-    }
-
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            className={`${full ? 'w-full' : ''} ${primary
-                ? 'border border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)] hover:opacity-90'
-                : `border ${toneClasses[tone]}`
-                } px-4 py-3 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:pointer-events-none disabled:opacity-40 lg:py-2 lg:text-xs`}
-        >
-            {children}
-        </button>
-    )
-}
-
-function AdminModal({
-    eyebrow,
-    title,
-    onClose,
-    children,
-    footer,
-}: {
-    eyebrow: string
-    title: string
-    onClose: () => void
-    children: React.ReactNode
-    footer?: React.ReactNode
-}) {
-    return (
-        <div className="fixed inset-0 z-[100] flex items-end bg-black/70 p-0 sm:items-center sm:p-5">
-            <section className="animate-modal-in max-h-[92dvh] w-full overflow-y-auto border border-white/10 bg-[var(--app-bg)] p-5 text-[var(--app-text)] shadow-2xl sm:mx-auto sm:max-w-xl sm:p-6">
-                <div className="flex items-start justify-between gap-5 border-b border-white/10 pb-5">
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">{eyebrow}</p>
-                        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">{title}</h2>
-                    </div>
-                    <button onClick={onClose} className="btn-secondary px-3 py-2">
-                        Cerrar
-                    </button>
-                </div>
-                <div className="mt-6">{children}</div>
-                {footer && <div className="mt-6">{footer}</div>}
-            </section>
-        </div>
-    )
-}
-
-function ModalFooter({
-    onCancel,
-    onConfirm,
-    confirmText,
-    disabled,
-}: {
-    onCancel: () => void
-    onConfirm: () => void
-    confirmText: string
-    disabled?: boolean
-}) {
-    return (
-        <div className="grid gap-3 sm:grid-cols-2">
-            <button onClick={onCancel} className="btn-secondary">
-                Cancelar
-            </button>
-            <button
-                onClick={onConfirm}
-                disabled={disabled}
-                className="btn-primary disabled:opacity-50"
-            >
-                {confirmText}
-            </button>
-        </div>
-    )
 }
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -2263,41 +2011,6 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
     )
 }
 
-function StatusBadge({ status }: { status: string }) {
-    const styles: Record<string, string> = {
-        pending: 'border-yellow-400/30 text-yellow-300 bg-yellow-400/10',
-        confirmed: 'border-emerald-400/30 text-emerald-300 bg-emerald-400/10',
-        completed: 'border-blue-400/30 text-blue-300 bg-blue-400/10',
-        cancelled: 'border-red-400/30 text-red-300 bg-red-400/10',
-    }
-
-    const labels: Record<string, string> = {
-        pending: 'Pendiente',
-        confirmed: 'Confirmada',
-        completed: 'Completada',
-        cancelled: 'Cancelada',
-    }
-
-    return (
-        <span className={`inline-flex border px-2.5 py-1 text-xs font-semibold ${styles[status] || 'border-white/10 text-[var(--app-muted)]'}`}>
-            {labels[status] || status}
-        </span>
-    )
-}
-
-function ActiveBadge({ active }: { active: boolean }) {
-    return (
-        <span
-            className={`inline-flex border px-2.5 py-1 text-xs font-semibold ${active
-                ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
-                : 'border-white/10 bg-white/[0.04] text-[var(--app-muted)]'
-                }`}
-        >
-            {active ? 'Activo' : 'Inactivo'}
-        </span>
-    )
-}
-
 function EmptyState({ show, text }: { show: boolean; text: string }) {
     if (!show) return null
 
@@ -2329,4 +2042,186 @@ function ErrorMessage({ message }: { message: string }) {
     if (!message) return null
 
     return <div className="mt-4 border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{message}</div>
+}
+
+const ADMIN_TIME_OPTIONS = Array.from({ length: 48 }).map((_, index) => {
+    const totalMinutes = index * 30
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+})
+
+function BreakFormModal({
+    item,
+    business,
+    onClose,
+    onSaved,
+    notify,
+    askConfirm,
+}: {
+    item: any
+    business: any
+    onClose: () => void
+    onSaved: () => Promise<void>
+    notify: (title: string, message?: string, tone?: 'success' | 'danger' | 'info') => void
+    askConfirm: (options: {
+        title: string
+        message?: string
+        tone?: 'danger' | 'info'
+        onConfirm: () => void | Promise<void>
+    }) => void
+}) {
+    const [form, setForm] = useState(item)
+    const [saving, setSaving] = useState(false)
+    const isEditing = Boolean(item.id)
+
+    function patchForm(patch: any) {
+        setForm((prev: any) => ({ ...prev, ...patch }))
+    }
+
+    async function saveBreak() {
+        if (!form.date || !form.name?.trim() || !form.start_time || !form.end_time) {
+            notify('Campos incompletos', 'Completa fecha, motivo y horario.', 'danger')
+            return
+        }
+
+        if (form.start_time >= form.end_time) {
+            notify('Horario inválido', 'La hora de inicio debe ser menor que la hora final.', 'danger')
+            return
+        }
+
+        const { data: affectedAppointments } = await supabase
+            .from('appointments')
+            .select('*')
+            .eq('date', form.date)
+            .in('status', ['pending', 'confirmed'])
+
+        const appointmentsToCancel = (affectedAppointments || []).filter((appointment) =>
+            rangesOverlap(
+                String(form.start_time).slice(0, 5),
+                String(form.end_time).slice(0, 5),
+                String(appointment.start_time).slice(0, 5),
+                String(appointment.end_time).slice(0, 5)
+            )
+        )
+
+        async function runSave() {
+            setSaving(true)
+
+            const payload = {
+                name: form.name.trim(),
+                date: form.date,
+                start_time: String(form.start_time).slice(0, 5),
+                end_time: String(form.end_time).slice(0, 5),
+                is_active: Boolean(form.is_active),
+            }
+
+            const { error } = isEditing
+                ? await supabase.from('breaks').update(payload).eq('id', form.id)
+                : await supabase.from('breaks').insert(payload)
+
+            if (error) {
+                setSaving(false)
+                notify('No se pudo guardar el bloqueo', 'Intenta nuevamente.', 'danger')
+                return
+            }
+
+            if (form.is_active && appointmentsToCancel.length > 0) {
+                await supabase
+                    .from('appointments')
+                    .update({ status: 'cancelled' })
+                    .in('id', appointmentsToCancel.map((appointment) => appointment.id))
+            }
+
+            setSaving(false)
+
+            notify(
+                isEditing ? 'Bloqueo actualizado' : 'Bloqueo creado',
+                appointmentsToCancel.length > 0
+                    ? 'Se guardó el bloqueo y se cancelaron las citas afectadas.'
+                    : 'Los cambios fueron guardados correctamente.',
+                'success'
+            )
+
+            await onSaved()
+        }
+
+        if (form.is_active && appointmentsToCancel.length > 0) {
+            askConfirm({
+                title: 'Bloqueo con citas existentes',
+                message: `Este bloqueo afecta ${appointmentsToCancel.length} cita(s). Si continúas, serán canceladas.`,
+                tone: 'danger',
+                onConfirm: runSave,
+            })
+
+            return
+        }
+
+        await runSave()
+    }
+
+    return (
+        <AdminModal
+            eyebrow={isEditing ? 'Editar bloqueo' : 'Nuevo bloqueo'}
+            title={isEditing ? form.name || 'Bloqueo' : 'Crear bloqueo'}
+            onClose={onClose}
+            footer={
+                <ModalFooter
+                    onCancel={onClose}
+                    onConfirm={saveBreak}
+                    confirmText={saving ? 'Guardando...' : 'Guardar bloqueo'}
+                    disabled={saving}
+                />
+            }
+        >
+            <div className="space-y-6">
+                <FieldLabel label="Fecha">
+                    <DateSelector
+                        value={form.date}
+                        onChange={(date) => patchForm({ date })}
+                        days={30}
+                    />
+                </FieldLabel>
+
+                <FieldLabel label="Motivo">
+                    <input
+                        value={form.name || ''}
+                        onChange={(event) => patchForm({ name: event.target.value })}
+                        placeholder="Almuerzo, ausencia, descanso..."
+                        className="admin-input"
+                    />
+                </FieldLabel>
+
+                <div>
+                    <FieldLabel label="Desde">
+                        <TimeSelector
+                            value={String(form.start_time).slice(0, 5)}
+                            options={ADMIN_TIME_OPTIONS}
+                            onChange={(start_time) => patchForm({ start_time })}
+                            timeFormat={business?.time_format || '24h'}
+                        />
+                    </FieldLabel>
+                </div>
+
+                <div>
+                    <FieldLabel label="Hasta">
+                        <TimeSelector
+                            value={String(form.end_time).slice(0, 5)}
+                            options={ADMIN_TIME_OPTIONS}
+                            onChange={(end_time) => patchForm({ end_time })}
+                            timeFormat={business?.time_format || '24h'}
+                        />
+                    </FieldLabel>
+                </div>
+
+                <ToggleField
+                    label="Bloqueo activo"
+                    description="Si está activo, este horario no aparecerá disponible para reservas."
+                    checked={Boolean(form.is_active)}
+                    onChange={(is_active) => patchForm({ is_active })}
+                />
+            </div>
+        </AdminModal>
+    )
 }
