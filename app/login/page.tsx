@@ -18,16 +18,31 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('')
   const [noticeMsg, setNoticeMsg] = useState('')
   const [business, setBusiness] = useState<any>(null)
+  const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    const reason = consumeLogoutReason()
-    if (reason) setNoticeMsg(reason)
+    async function initLoginPage() {
+      const reason = consumeLogoutReason()
+      if (reason) setNoticeMsg(reason)
 
-    supabase
-      .from('business_settings')
-      .select('*')
-      .single()
-      .then(({ data }) => setBusiness(data))
+      const { data } = await supabase.auth.getUser()
+
+      if (data.user) {
+        touchAdminActivity()
+        window.location.href = '/admin'
+        return
+      }
+
+      const { data: businessData } = await supabase
+        .from('business_settings')
+        .select('*')
+        .single()
+
+      setBusiness(businessData)
+      setCheckingSession(false)
+    }
+
+    initLoginPage()
   }, [])
 
   async function handleLogin(event?: React.FormEvent) {
@@ -52,6 +67,26 @@ export default function LoginPage() {
 
     touchAdminActivity()
     window.location.href = '/admin'
+  }
+
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-6 text-white">
+        <section className="w-full max-w-md animate-fade-in border border-white/10 bg-neutral-900 p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/70">
+            Acceso privado
+          </p>
+
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
+            Verificando sesión...
+          </h1>
+
+          <div className="mt-8 overflow-hidden border border-white/10 bg-white/[0.04]">
+            <div className="h-1 animate-loading-bar bg-white" />
+          </div>
+        </section>
+      </main>
+    )
   }
 
   return (
