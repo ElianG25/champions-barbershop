@@ -2,6 +2,15 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { formatCurrency } from '@/lib/utils'
 import { buildThemeStyle } from '@/lib/theme'
+import {
+  ArrowUp,
+  CalendarCheck,
+  Clock,
+  MapPin,
+  MessageCircle,
+  ShieldCheck,
+  Smartphone,
+} from 'lucide-react'
 
 export default async function Home() {
   const { data: business } = await supabase
@@ -21,6 +30,8 @@ export default async function Home() {
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
     .limit(6)
+
+  const DEVELOPER_WHATSAPP = '18296055347'
 
   const coverImage =
     business?.cover_url ||
@@ -100,25 +111,29 @@ export default async function Home() {
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href="/reservar"
-                  className="bg-[var(--brand)] px-7 py-4 text-center text-sm font-semibold text-[var(--app-bg)] transition hover:opacity-90"
+                  className="inline-flex items-center justify-center gap-2 bg-[var(--brand)] px-7 py-4 text-center text-sm font-semibold text-[var(--app-bg)] transition hover:opacity-90"
                 >
+                  <CalendarCheck size={16} />
                   Reservar cita
                 </Link>
 
                 {business?.whatsapp && (
                   <a
                     href={`https://wa.me/${String(business.whatsapp).replace(/\D/g, '')}`}
-                    className="border border-white/15 px-7 py-4 text-center text-sm font-semibold text-[var(--app-text)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 border border-white/15 px-7 py-4 text-center text-sm font-semibold text-[var(--app-text)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                   >
+                    <MessageCircle size={16} />
                     WhatsApp
                   </a>
                 )}
               </div>
 
               <div className="mt-12 grid grid-cols-3 border-y border-white/10 py-6">
-                <Metric value="24/7" label="Reservas" />
-                <Metric value="+15" label="Slots diarios" />
-                <Metric value="100%" label="Mobile ready" />
+                <Metric icon={<Clock size={18} />} value="24/7" label="Reservas" />
+                <Metric icon={<CalendarCheck size={18} />} value="+15" label="Slots diarios" />
+                <Metric icon={<Smartphone size={18} />} value="100%" label="Mobile ready" />
               </div>
             </div>
           </div>
@@ -254,14 +269,17 @@ export default async function Home() {
 
           <div className="space-y-6">
             <Feature
+              icon={<ShieldCheck size={18} />}
               title="Disponibilidad real"
               text="Solo se muestran horarios libres según servicios, duración, descansos y citas existentes."
             />
             <Feature
+              icon={<Smartphone size={18} />}
               title="Diseño mobile-first"
               text="La reserva está optimizada para hacerse desde el móvil en pocos pasos."
             />
             <Feature
+              icon={<CalendarCheck size={18} />}
               title="Confirmación inmediata"
               text="El cliente recibe una experiencia clara desde la selección hasta la confirmación."
             />
@@ -284,7 +302,7 @@ export default async function Home() {
             </p>
 
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em]">
-              {business?.address || 'Barcelona, España'}
+              Encuéntranos fácilmente en Google Maps y obtén instrucciones en tiempo real.
             </h2>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -309,6 +327,9 @@ export default async function Home() {
           </div>
 
           <div className="min-h-[260px] border border-white/10 bg-white/[0.03] p-6">
+            <div className="mb-4 text-[var(--brand)]">
+              <MapPin size={20} />
+            </div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
               Cómo llegar
             </p>
@@ -317,10 +338,31 @@ export default async function Home() {
               {business?.address || 'Barcelona, España'}
             </p>
 
-            <div className="mt-6 border border-white/10 bg-[var(--app-surface)] p-5">
-              <p className="text-sm leading-7 text-[var(--app-muted)]">
-                Próximo paso: conectar esta zona con un enlace de Google Maps configurable desde el panel.
-              </p>
+            <div className="mt-6 overflow-hidden border border-white/10 bg-[var(--app-surface)]">
+
+
+              <div className="aspect-[16/10] w-full border-b border-white/10">
+                <iframe
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2993.397889445219!2d2.17514877508893!3d41.38716467129989!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x12a4a386b497c2f5%3A0x9adbda8c85bd18e3!2sChampions%20barber%20shop!5e0!3m2!1ses-419!2sdo!4v1778528201329!5m2!1ses-419!2sdo"
+                  width="100%"
+                  height="100%"
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="h-full w-full"
+                />
+              </div>
+
+              <div className="p-5">
+                <a
+                  href="https://maps.app.goo.gl/ZZGyzcJYFrPQ4zaUA"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary inline-flex items-center gap-2"
+                >
+                  Abrir en Google Maps
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -331,7 +373,9 @@ export default async function Home() {
           {new Date().getFullYear()} © |{' '}
           {business?.name || 'Champions Barbershop'} by.{' '}
           <a
-            href="https://t.me/Ztyl3"
+            href={`https://wa.me/${DEVELOPER_WHATSAPP}?text=${encodeURIComponent(
+              `Hola Elian, he visto tu trabajo en ${business?.name || "Champions Barbershop"}, y me gustaría cotizar una web.`
+            )}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--brand)] transition hover:underline"
@@ -354,17 +398,26 @@ export default async function Home() {
       <a
         href="#top"
         aria-label="Volver al inicio"
-        className="fixed bottom-24 right-5 z-50 hidden border border-white/10 bg-[var(--app-bg)]/90 px-4 py-3 text-sm font-semibold text-[var(--app-text)] backdrop-blur transition hover:-translate-y-0.5 hover:border-[var(--brand)] hover:text-[var(--brand)] md:block"
+        className="fixed bottom-24 right-5 z-50 hidden border border-white/10 bg-[var(--app-bg)]/90 p-4 text-[var(--app-text)] backdrop-blur transition hover:-translate-y-0.5 hover:border-[var(--brand)] hover:text-[var(--brand)] md:inline-flex"
       >
-        ↑
+        <ArrowUp size={16} />
       </a>
     </main>
   )
 }
 
-function Metric({ value, label }: { value: string; label: string }) {
+function Metric({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ReactNode
+  value: string
+  label: string
+}) {
   return (
     <div>
+      <div className="mb-3 text-[var(--brand)]">{icon}</div>
       <p className="text-2xl font-semibold text-[var(--brand)]">{value}</p>
       <p className="mt-1 text-xs uppercase tracking-wide text-[var(--app-muted)]">
         {label}
@@ -373,10 +426,19 @@ function Metric({ value, label }: { value: string; label: string }) {
   )
 }
 
-function Feature({ title, text }: { title: string; text: string }) {
+function Feature({
+  icon,
+  title,
+  text,
+}: {
+  icon: React.ReactNode
+  title: string
+  text: string
+}) {
   return (
     <div className="border-t border-white/10 pt-5">
-      <h3 className="text-lg font-semibold">{title}</h3>
+      <div className="text-[var(--brand)]">{icon}</div>
+      <h3 className="mt-3 text-lg font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-7 text-[var(--app-muted)]">{text}</p>
     </div>
   )

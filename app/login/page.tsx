@@ -1,21 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { useEffect, useState } from 'react'
 import { buildThemeStyle } from '@/lib/theme'
+import {
+  consumeLogoutReason,
+  touchAdminActivity,
+} from '@/lib/adminSession'
+
+const DEVELOPER_WHATSAPP = '18296055347'
 
 export default function LoginPage() {
-  const router = useRouter()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [noticeMsg, setNoticeMsg] = useState('')
   const [business, setBusiness] = useState<any>(null)
 
   useEffect(() => {
+    const reason = consumeLogoutReason()
+    if (reason) setNoticeMsg(reason)
+
     supabase
       .from('business_settings')
       .select('*')
@@ -26,10 +33,11 @@ export default function LoginPage() {
   async function handleLogin(event?: React.FormEvent) {
     event?.preventDefault()
 
-    if (!email || !password || loading) return
+    if (!email.trim() || !password || loading) return
 
     setLoading(true)
     setErrorMsg('')
+    setNoticeMsg('')
 
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -42,7 +50,8 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/admin')
+    touchAdminActivity()
+    window.location.href = '/admin'
   }
 
   return (
@@ -58,7 +67,7 @@ export default function LoginPage() {
             </p>
 
             <h1 className="mt-5 max-w-xl text-6xl font-semibold tracking-[-0.07em]">
-              {business?.name || 'NEGOCIO'}
+              {business?.name || 'Champions Barbershop'}
             </h1>
 
             <p className="mt-5 max-w-md text-sm leading-7 text-[var(--app-muted)]">
@@ -69,7 +78,7 @@ export default function LoginPage() {
           <div className="grid grid-cols-3 gap-px overflow-hidden border border-white/10 bg-white/10">
             <LoginStat label="Reservas" value="24/7" />
             <LoginStat label="Panel" value="Admin" />
-            <LoginStat label="Estado" value="Live" />
+            <LoginStat label="Estado" value="Privado" />
           </div>
         </section>
 
@@ -81,7 +90,7 @@ export default function LoginPage() {
               </p>
 
               <h1 className="mt-3 text-4xl font-semibold tracking-[-0.05em]">
-                {business?.name || 'NEGOCIO'}
+                {business?.name || 'Champions Barbershop'}
               </h1>
             </div>
 
@@ -104,6 +113,9 @@ export default function LoginPage() {
               </div>
 
               <div className="mt-6 space-y-4">
+                {noticeMsg && <NoticeMessage message={noticeMsg} />}
+                {errorMsg && <ErrorMessage message={errorMsg} />}
+
                 <Field label="Email">
                   <input
                     type="email"
@@ -126,24 +138,32 @@ export default function LoginPage() {
                   />
                 </Field>
 
-                {errorMsg && (
-                  <ErrorMessage message={errorMsg} />
-                )}
-
                 <button
                   type="submit"
-                  disabled={loading || !email || !password}
+                  disabled={loading || !email.trim() || !password}
                   className="btn-primary w-full disabled:opacity-40"
                 >
                   {loading ? 'Entrando...' : 'Entrar al panel'}
                 </button>
+
+                <a
+                  href={`https://wa.me/${DEVELOPER_WHATSAPP}?text=${encodeURIComponent(
+                    'Hola Elian, necesito solicitar un nuevo usuario administrador para el sistema de reservas.'
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary w-full text-center"
+                >
+                  Solicitar usuario administrador
+                </a>
+
+                <p className="text-center text-xs leading-5 text-[var(--app-muted)]">
+                  Los usuarios administradores no se registran desde la web. Deben ser creados directamente en la base de datos.
+                </p>
               </div>
             </form>
 
-            <Link
-              href="/"
-              className="btn-secondary mt-5 block text-center"
-            >
+            <Link href="/" className="btn-secondary mt-5 block text-center">
               Volver a la web
             </Link>
           </div>
@@ -183,6 +203,22 @@ function LoginStat({ label, value }: { label: string; value: string }) {
   )
 }
 
+function NoticeMessage({ message }: { message: string }) {
+  return (
+    <div className="animate-fade-in border border-[var(--brand)]/40 bg-white/[0.04] p-4 text-sm leading-6 text-[var(--app-text)]">
+      {message}
+    </div>
+  )
+}
+
+function ErrorMessage({ message }: { message: string }) {
+  return (
+    <div className="animate-fade-in border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+      {message}
+    </div>
+  )
+}
+
 function translateAuthError(message: string) {
   const normalized = message.toLowerCase()
 
@@ -203,12 +239,4 @@ function translateAuthError(message: string) {
   }
 
   return 'No se pudo iniciar sesión. Revisa tus datos e intenta nuevamente.'
-}
-
-function ErrorMessage({ message }: { message: string }) {
-  return (
-    <div className="border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200 animate-fade-in">
-      {message}
-    </div>
-  )
 }

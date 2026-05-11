@@ -7,6 +7,7 @@ import { formatDate, formatTime } from '@/lib/utils'
 import { buildThemeStyle } from '@/lib/theme'
 import { supabase } from '@/lib/supabaseClient'
 import { NeutralLoader } from '@/components/ui/NeutralLoader'
+import { Check } from 'lucide-react'
 
 export default function ReservaConfirmadaPage() {
   return (
@@ -88,7 +89,7 @@ function SuccessContent() {
         <div className="animate-modal-in border border-white/10 bg-[var(--app-surface)] p-5 shadow-2xl sm:p-6 lg:p-8">
           <div className="border-b border-white/10 pb-6">
             <div className="flex h-14 w-14 items-center justify-center border border-[var(--brand)] text-2xl text-[var(--brand)]">
-              ✓
+              <Check size={24} />
             </div>
 
             <h2 className="mt-5 text-2xl font-semibold tracking-[-0.03em]">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -48,8 +48,6 @@ export default function ReservarPage() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
-
-  const minDate = useMemo(() => new Date().toISOString().split('T')[0], [])
 
   useEffect(() => {
     loadInitialData()
@@ -361,7 +359,10 @@ export default function ReservarPage() {
             <div className="mt-6 border-t border-white/10 pt-5">
               <SummaryRow label="Servicio" value={selectedService?.name || 'Pendiente'} />
               <SummaryRow label="Cliente" value={customerName || 'Pendiente'} />
-              <SummaryRow label="Fecha" value={date || 'Pendiente'} />
+              <SummaryRow
+                label="Fecha"
+                value={date ? formatDate(date) : 'Pendiente'}
+              />
               <SummaryRow
                 label="Hora"
                 value={
@@ -423,7 +424,7 @@ export default function ReservarPage() {
             step="02"
             title="Datos del cliente"
             active={activeStep === 'client'}
-            completed={Boolean(customerName && customerPhone)}
+            completed={Boolean(customerName.trim() && isValidPhoneNumber(customerPhone))}
             summary={customerName || undefined}
             disabled={!selectedService}
             onOpen={() => selectedService && setActiveStep('client')}
@@ -451,7 +452,7 @@ export default function ReservarPage() {
             active={activeStep === 'date'}
             completed={Boolean(date)}
             summary={date || undefined}
-            disabled={!selectedService || !customerName || !customerPhone}
+            disabled={!selectedService || !customerName.trim() || !isValidPhoneNumber(customerPhone)}
             onOpen={() => selectedService && customerName && customerPhone && setActiveStep('date')}
           >
             <DateSelector value={date} onChange={selectDate} days={21} />
@@ -620,7 +621,7 @@ function ConfirmModal({
 
           <button
             onClick={onClose}
-            className="admin-button admin-button-muted"
+            className="btn-secondary px-3 py-2"
           >
             Cerrar
           </button>
@@ -645,7 +646,7 @@ function ConfirmModal({
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button
             onClick={onClose}
-            className="border border-white/15 px-5 py-4 text-sm font-semibold"
+            className="btn-secondary"
           >
             Editar
           </button>
@@ -653,7 +654,7 @@ function ConfirmModal({
           <button
             onClick={onConfirm}
             disabled={submitting}
-            className="bg-[var(--brand)] px-5 py-4 text-sm font-semibold text-[var(--app-bg)] disabled:opacity-50"
+            className="btn-primary disabled:opacity-50"
           >
             {submitting ? 'Confirmando...' : 'Confirmar cita'}
           </button>

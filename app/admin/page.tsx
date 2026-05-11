@@ -27,6 +27,12 @@ import {
     Settings,
     CalendarClock,
 } from 'lucide-react'
+import {
+    clearAdminActivity,
+    getAdminInactivityExpired,
+    setLogoutReason,
+    touchAdminActivity,
+} from '@/lib/adminSession'
 import { DateSelector } from '@/components/ui/DateSelector'
 import { TimeSelector } from '@/components/ui/TimeSelector'
 import { AdminModal } from '@/components/admin/AdminModal'
@@ -91,13 +97,59 @@ export default function AdminPage() {
         bootstrap()
     }, [])
 
+    useEffect(() => {
+        const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart']
+
+        function handleActivity() {
+            if (getAdminInactivityExpired()) {
+                supabase.auth.signOut().then(() => {
+                    clearAdminActivity()
+                    setLogoutReason('Tu sesión se cerró por inactividad. Vuelve a iniciar sesión.')
+                    window.location.href = '/login'
+                })
+
+                return
+            }
+
+            touchAdminActivity()
+        }
+
+        events.forEach((event) => window.addEventListener(event, handleActivity))
+
+        const interval = window.setInterval(() => {
+            if (getAdminInactivityExpired()) {
+                supabase.auth.signOut().then(() => {
+                    clearAdminActivity()
+                    setLogoutReason('Tu sesión se cerró por inactividad. Vuelve a iniciar sesión.')
+                    window.location.href = '/login'
+                })
+            }
+        }, 60 * 1000)
+
+        return () => {
+            events.forEach((event) => window.removeEventListener(event, handleActivity))
+            window.clearInterval(interval)
+        }
+    }, [])
+
     async function bootstrap() {
         const { data } = await supabase.auth.getUser()
 
         if (!data.user) {
+            setLogoutReason('Debes iniciar sesión para acceder al panel de administración.')
             window.location.href = '/login'
             return
         }
+
+        if (getAdminInactivityExpired()) {
+            await supabase.auth.signOut()
+            clearAdminActivity()
+            setLogoutReason('Tu sesión se cerró por inactividad. Vuelve a iniciar sesión.')
+            window.location.href = '/login'
+            return
+        }
+
+        touchAdminActivity()
 
         await loadData()
         setLoading(false)
@@ -129,6 +181,8 @@ export default function AdminPage() {
             tone: 'danger',
             onConfirm: async () => {
                 await supabase.auth.signOut()
+                clearAdminActivity()
+                setLogoutReason('Sesión cerrada correctamente.')
                 window.location.href = '/login'
             },
         })
@@ -186,21 +240,61 @@ export default function AdminPage() {
     }
 
     const stats = useMemo(() => {
-        const today = new Date().toISOString().split('T')[0]
-        const todayAppointments = appointments.filter((appointment) => appointment.date === today)
+        const today = new Date()
+
+        const toISODate = (date: Date) => date.toISOString().split('T')[0]
+
+        const todayStr = toISODate(today)
+
+        const yesterday = new Date(today)
+        yesterday.setDate(today.getDate() - 1)
+
+        const sevenDaysAgo = new Date(today)
+        sevenDaysAgo.setDate(today.getDate() - 6)
+
+        const fifteenDaysAgo = new Date(today)
+        fifteenDaysAgo.setDate(today.getDate() - 14)
+
+        const monthAgo = new Date(today)
+        monthAgo.setMonth(today.getMonth() - 1)
+
+        const completedAppointments = appointments.filter(
+            (appointment) => appointment.status === 'completed'
+        )
+
+        function revenueBetween(start: string, end: string) {
+            return completedAppointments
+                .filter((appointment) => appointment.date >= start && appointment.date <= end)
+                .reduce(
+                    (sum, appointment) => sum + Number(appointment.services?.price || 0),
+                    0
+                )
+        }
+
+        const todayAppointments = appointments.filter(
+            (appointment) => appointment.date === todayStr
+        )
+
         const pending = appointments.filter((appointment) =>
             ['pending', 'confirmed'].includes(appointment.status)
         )
-        const revenue = todayAppointments.reduce(
-            (sum, appointment) => sum + Number(appointment.services?.price || 0),
-            0
-        )
+
+        const revenueToday = revenueBetween(todayStr, todayStr)
+        const revenueYesterday = revenueBetween(toISODate(yesterday), toISODate(yesterday))
+        const revenue7Days = revenueBetween(toISODate(sevenDaysAgo), todayStr)
+        const revenue15Days = revenueBetween(toISODate(fifteenDaysAgo), todayStr)
+        const revenueMonth = revenueBetween(toISODate(monthAgo), todayStr)
 
         return {
             today: todayAppointments.length,
             pending: pending.length,
             services: services.length,
-            revenue,
+            revenue: revenueToday,
+            revenueToday,
+            revenueYesterday,
+            revenue7Days,
+            revenue15Days,
+            revenueMonth,
         }
     }, [appointments, services.length])
 
@@ -514,7 +608,17 @@ function HomeSection({
     business,
     setSection,
 }: {
-    stats: { today: number; pending: number; services: number; revenue: number }
+    stats: {
+        today: number
+        pending: number
+        services: number
+        revenue: number
+        revenueToday: number
+        revenueYesterday: number
+        revenue7Days: number
+        revenue15Days: number
+        revenueMonth: number
+    }
     business: any
     setSection: (section: Section) => void
 }) {
@@ -533,12 +637,35 @@ function HomeSection({
 
             <div className="mt-6 grid gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard label="Citas hoy" value={stats.today} />
-                <MetricCard label="Pendientes" value={stats.pending} />
+                <MetricCard label="Pendientes / activas" value={stats.pending} />
                 <MetricCard label="Servicios" value={stats.services} />
                 <MetricCard
                     label="Ingresos hoy"
-                    value={formatCurrency(stats.revenue, business?.currency || 'EUR')}
+                    value={formatCurrency(stats.revenueToday, business?.currency || 'EUR')}
                 />
+            </div>
+
+            <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+                <RevenueDashboard stats={stats} business={business} />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <MetricCard
+                        label="Ingresos ayer"
+                        value={formatCurrency(stats.revenueYesterday, business?.currency || 'EUR')}
+                    />
+                    <MetricCard
+                        label="Últimos 7 días"
+                        value={formatCurrency(stats.revenue7Days, business?.currency || 'EUR')}
+                    />
+                    <MetricCard
+                        label="Últimos 15 días"
+                        value={formatCurrency(stats.revenue15Days, business?.currency || 'EUR')}
+                    />
+                    <MetricCard
+                        label="Último mes"
+                        value={formatCurrency(stats.revenueMonth, business?.currency || 'EUR')}
+                    />
+                </div>
             </div>
 
             <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -560,6 +687,73 @@ function HomeSection({
             </div>
         </section>
     )
+}
+
+function RevenueDashboard({
+  stats,
+  business,
+}: {
+  stats: {
+    revenueToday: number
+    revenueYesterday: number
+    revenue7Days: number
+    revenue15Days: number
+    revenueMonth: number
+  }
+  business: any
+}) {
+  const items = [
+    { label: 'Hoy', value: stats.revenueToday },
+    { label: 'Ayer', value: stats.revenueYesterday },
+    { label: '7 días', value: stats.revenue7Days },
+    { label: '15 días', value: stats.revenue15Days },
+    { label: 'Mes', value: stats.revenueMonth },
+  ]
+
+  const maxValue = Math.max(...items.map((item) => item.value), 1)
+
+  return (
+    <section className="border border-white/10 bg-[var(--app-surface)] p-5">
+      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
+            Ingresos
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
+            Rendimiento reciente
+          </h3>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-4">
+        {items.map((item) => {
+          const width = `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 8 : 0)}%`
+
+          return (
+            <div key={item.label}>
+              <div className="mb-2 flex items-center justify-between gap-4">
+                <span className="text-sm font-semibold">{item.label}</span>
+                <span className="text-sm text-[var(--app-muted)]">
+                  {formatCurrency(item.value, business?.currency || 'EUR')}
+                </span>
+              </div>
+
+              <div className="h-3 overflow-hidden bg-white/[0.06]">
+                <div
+                  style={{ width }}
+                  className="h-full bg-[var(--brand)] transition-all duration-500"
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="mt-5 text-xs leading-5 text-[var(--app-muted)]">
+        Solo se cuentan citas completadas automáticamente o manualmente.
+      </p>
+    </section>
+  )
 }
 
 function DesktopNav({ section, setSection }: { section: Section; setSection: (section: Section) => void }) {
