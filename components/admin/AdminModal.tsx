@@ -44,7 +44,7 @@ export function AdminModal({
   return createPortal(
     <div className="admin-modal-backdrop">
       <section className={`admin-modal ${sizeClass}`}>
-        <div className="sticky top-0 z-10 border-b border-white/10 bg-[var(--app-bg)] pb-5">
+        <div className="sticky top-0 z-10 border-b border-white/10 bg-modal-solid pb-5">
           <div className="flex items-start justify-between gap-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
@@ -69,7 +69,7 @@ export function AdminModal({
         <div className="mt-6">{children}</div>
 
         {footer && (
-          <div className="sticky bottom-0 mt-6 border-t border-white/10 bg-[var(--app-bg)] pt-4">
+          <div className="sticky bottom-0 mt-6 border-t border-white/10 bg-modal-solid pt-4">
             {footer}
           </div>
         )}

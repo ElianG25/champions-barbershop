@@ -180,40 +180,50 @@ export default async function Home() {
           </div>
 
           <div className="grid gap-px overflow-hidden border border-white/10 bg-white/10">
-            {(services || []).map((service) => (
-              <Link
-                href="/reservar"
-                key={service.id}
-                className="group bg-[var(--app-surface)] p-5 transition hover:bg-white/[0.08] sm:p-6"
-              >
-                <div className="flex items-start justify-between gap-5">
-                  <div>
-                    <h3 className="text-xl font-semibold">
-                      {service.name}
-                    </h3>
-                    <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--app-muted)]">
-                      {service.description}
-                    </p>
+            {(services || [])
+              .slice(0, 4)
+              .map((service) => (
+                <Link
+                  href="/reservar"
+                  key={service.id}
+                  className="group bg-[var(--app-surface)] p-5 transition hover:bg-white/[0.08] sm:p-6"
+                >
+                  <div className="flex items-start justify-between gap-5">
+                    <div>
+                      <h3 className="text-xl font-semibold">
+                        {service.name}
+                      </h3>
+                      <p className="mt-2 line-clamp-2 text-sm leading-7 text-[var(--app-muted)]">
+                        {service.description}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <p className="text-lg font-semibold text-[var(--brand)]">
+                        {formatCurrency(Number(service.price), business?.currency || 'EUR')}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--app-muted)]">
+                        {service.duration_minutes} min
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="shrink-0 text-right">
-                    <p className="text-lg font-semibold text-[var(--brand)]">
-                      {formatCurrency(Number(service.price), business?.currency || 'EUR')}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--app-muted)]">
-                      {service.duration_minutes} min
-                    </p>
-                  </div>
-                </div>
+                  <div className="mt-5 h-px w-full bg-white/10" />
 
-                <div className="mt-5 h-px w-full bg-white/10" />
-
-                <p className="mt-4 text-sm font-semibold text-[var(--brand)] opacity-80 transition group-hover:translate-x-1">
-                  Reservar este servicio →
-                </p>
-              </Link>
-            ))}
+                  <p className="mt-4 text-sm font-semibold text-[var(--brand)] opacity-80 transition group-hover:translate-x-1">
+                    Reservar este servicio →
+                  </p>
+                </Link>
+              ))}
           </div>
+        </div>
+        <div className="mt-10 flex justify-center">
+          <Link
+            href="/reservar"
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            Ver todos los servicios
+          </Link>
         </div>
       </section>
 

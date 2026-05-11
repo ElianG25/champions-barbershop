@@ -132,6 +132,22 @@ export default function AdminPage() {
         }
     }, [])
 
+    useEffect(() => {
+        if (!business) return
+
+        const theme = buildThemeStyle(business)
+
+        Object.entries(theme).forEach(([key, value]) => {
+            document.documentElement.style.setProperty(key, String(value))
+        })
+
+        return () => {
+            Object.keys(theme).forEach((key) => {
+                document.documentElement.style.removeProperty(key)
+            })
+        }
+    }, [business])
+
     async function bootstrap() {
         const { data } = await supabase.auth.getUser()
 
@@ -690,70 +706,70 @@ function HomeSection({
 }
 
 function RevenueDashboard({
-  stats,
-  business,
+    stats,
+    business,
 }: {
-  stats: {
-    revenueToday: number
-    revenueYesterday: number
-    revenue7Days: number
-    revenue15Days: number
-    revenueMonth: number
-  }
-  business: any
+    stats: {
+        revenueToday: number
+        revenueYesterday: number
+        revenue7Days: number
+        revenue15Days: number
+        revenueMonth: number
+    }
+    business: any
 }) {
-  const items = [
-    { label: 'Hoy', value: stats.revenueToday },
-    { label: 'Ayer', value: stats.revenueYesterday },
-    { label: '7 días', value: stats.revenue7Days },
-    { label: '15 días', value: stats.revenue15Days },
-    { label: 'Mes', value: stats.revenueMonth },
-  ]
+    const items = [
+        { label: 'Hoy', value: stats.revenueToday },
+        { label: 'Ayer', value: stats.revenueYesterday },
+        { label: '7 días', value: stats.revenue7Days },
+        { label: '15 días', value: stats.revenue15Days },
+        { label: 'Mes', value: stats.revenueMonth },
+    ]
 
-  const maxValue = Math.max(...items.map((item) => item.value), 1)
+    const maxValue = Math.max(...items.map((item) => item.value), 1)
 
-  return (
-    <section className="border border-white/10 bg-[var(--app-surface)] p-5">
-      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
-            Ingresos
-          </p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
-            Rendimiento reciente
-          </h3>
-        </div>
-      </div>
-
-      <div className="mt-6 space-y-4">
-        {items.map((item) => {
-          const width = `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 8 : 0)}%`
-
-          return (
-            <div key={item.label}>
-              <div className="mb-2 flex items-center justify-between gap-4">
-                <span className="text-sm font-semibold">{item.label}</span>
-                <span className="text-sm text-[var(--app-muted)]">
-                  {formatCurrency(item.value, business?.currency || 'EUR')}
-                </span>
-              </div>
-
-              <div className="h-3 overflow-hidden bg-white/[0.06]">
-                <div
-                  style={{ width }}
-                  className="h-full bg-[var(--brand)] transition-all duration-500"
-                />
-              </div>
+    return (
+        <section className="border border-white/10 bg-[var(--app-surface)] p-5">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-5">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
+                        Ingresos
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
+                        Rendimiento reciente
+                    </h3>
+                </div>
             </div>
-          )
-        })}
-      </div>
 
-      <p className="mt-5 text-xs leading-5 text-[var(--app-muted)]">
-        Solo se cuentan citas completadas automáticamente o manualmente.
-      </p>
-    </section>
-  )
+            <div className="mt-6 space-y-4">
+                {items.map((item) => {
+                    const width = `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 8 : 0)}%`
+
+                    return (
+                        <div key={item.label}>
+                            <div className="mb-2 flex items-center justify-between gap-4">
+                                <span className="text-sm font-semibold">{item.label}</span>
+                                <span className="text-sm text-[var(--app-muted)]">
+                                    {formatCurrency(item.value, business?.currency || 'EUR')}
+                                </span>
+                            </div>
+
+                            <div className="h-3 overflow-hidden bg-white/[0.06]">
+                                <div
+                                    style={{ width }}
+                                    className="h-full bg-[var(--brand)] transition-all duration-500"
+                                />
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            <p className="mt-5 text-xs leading-5 text-[var(--app-muted)]">
+                Solo se cuentan citas completadas automáticamente o manualmente.
+            </p>
+        </section>
+    )
 }
 
 function DesktopNav({ section, setSection }: { section: Section; setSection: (section: Section) => void }) {
