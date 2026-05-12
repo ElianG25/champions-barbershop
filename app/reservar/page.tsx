@@ -17,6 +17,8 @@ import { NeutralLoader } from '@/components/ui/NeutralLoader'
 import { PhoneField, isValidPhoneNumber } from '@/components/ui/PhoneField'
 import { DateSelector } from '@/components/ui/DateSelector'
 import { TimeSelector } from '@/components/ui/TimeSelector'
+import { useSearchParams } from 'next/navigation'
+import { translateService } from '@/lib/landingTranslations'
 
 type Step = 'service' | 'client' | 'date' | 'time'
 
@@ -34,6 +36,105 @@ export default function ReservarPage() {
   const [business, setBusiness] = useState<any>(null)
   const [services, setServices] = useState<Service[]>([])
   const [selectedService, setSelectedService] = useState<Service | null>(null)
+
+  const searchParams = useSearchParams()
+  const language = searchParams.get('lang') === 'en' ? 'en' : 'es'
+  const langQuery = language === 'en' ? '?lang=en' : ''
+
+  const COPY = {
+    es: {
+      loadingEyebrow: 'Reserva online',
+      loadingTitle: 'Cargando disponibilidad...',
+      pausedEyebrow: 'Reservas pausadas',
+      pausedTitle: 'Las reservas no están disponibles ahora mismo.',
+      pausedText:
+        'El negocio ha pausado temporalmente las reservas online. Puedes volver más tarde o contactar directamente.',
+      back: 'Volver',
+      home: 'Volver al inicio',
+      bookingEyebrow: 'Reserva online',
+      bookingTitle: 'Agenda tu próxima visita.',
+      bookingText:
+        'Completa los pasos. Cada sección se abre automáticamente al avanzar.',
+      service: 'Servicio',
+      customer: 'Cliente',
+      date: 'Fecha',
+      time: 'Hora',
+      pending: 'Pendiente',
+      stepService: 'Servicio',
+      stepCustomer: 'Datos del cliente',
+      stepDate: 'Fecha',
+      stepTime: 'Horario',
+      fullName: 'Nombre completo',
+      optionalEmail: 'Email opcional',
+      continue: 'Continuar',
+      calculating: 'Calculando disponibilidad...',
+      selected: 'Listo',
+      confirmAppointment: 'Confirmar cita',
+      reviewBooking: 'Revisa tu reserva',
+      business: 'Negocio',
+      phone: 'Teléfono',
+      price: 'Precio',
+      edit: 'Editar',
+      confirming: 'Confirmando...',
+      completeName: 'Completa tu nombre.',
+      invalidPhone: 'Ingresa un número de teléfono válido.',
+      selectAll: 'Selecciona servicio, fecha y hora.',
+      createError: 'No se pudo crear la reserva.',
+      pastDate: 'No puedes reservar en una fecha pasada.',
+      dayUnavailable: 'Este día no está disponible. Motivo:',
+      loadingScheduleError: 'Error cargando horarios.',
+      closedDay: 'No trabajamos este día.',
+      invalidDuration: 'Este servicio no tiene una duración válida.',
+      noSlots: 'No hay horarios disponibles para esta fecha.',
+    },
+    en: {
+      loadingEyebrow: 'Online booking',
+      loadingTitle: 'Loading availability...',
+      pausedEyebrow: 'Bookings paused',
+      pausedTitle: 'Online bookings are not available right now.',
+      pausedText:
+        'The business has temporarily paused online bookings. Please come back later or contact us directly.',
+      back: 'Back',
+      home: 'Back home',
+      bookingEyebrow: 'Online booking',
+      bookingTitle: 'Book your next visit.',
+      bookingText:
+        'Complete the steps. Each section opens automatically as you move forward.',
+      service: 'Service',
+      customer: 'Customer',
+      date: 'Date',
+      time: 'Time',
+      pending: 'Pending',
+      stepService: 'Service',
+      stepCustomer: 'Customer details',
+      stepDate: 'Date',
+      stepTime: 'Time',
+      fullName: 'Full name',
+      optionalEmail: 'Optional email',
+      continue: 'Continue',
+      calculating: 'Calculating availability...',
+      selected: 'Done',
+      confirmAppointment: 'Confirm booking',
+      reviewBooking: 'Review your booking',
+      business: 'Business',
+      phone: 'Phone',
+      price: 'Price',
+      edit: 'Edit',
+      confirming: 'Confirming...',
+      completeName: 'Enter your name.',
+      invalidPhone: 'Enter a valid phone number.',
+      selectAll: 'Select service, date and time.',
+      createError: 'Could not create the booking.',
+      pastDate: 'You cannot book a past date.',
+      dayUnavailable: 'This day is not available. Reason:',
+      loadingScheduleError: 'Error loading schedule.',
+      closedDay: 'We are closed on this day.',
+      invalidDuration: 'This service does not have a valid duration.',
+      noSlots: 'No available times for this date.',
+    },
+  }
+
+  const t = COPY[language]
 
   const [date, setDate] = useState('')
   const [slots, setSlots] = useState<string[]>([])
@@ -57,6 +158,16 @@ export default function ReservarPage() {
     if (!selectedService || !date) return
     loadSlots()
   }, [selectedService, date])
+
+  function serviceName(service: Service) {
+    return language === 'en' ? translateService(service).name : service.name
+  }
+
+  function serviceDescription(service: Service) {
+    return language === 'en'
+      ? translateService(service).description
+      : service.description
+  }
 
   async function loadInitialData() {
     setLoading(true)
@@ -87,12 +198,12 @@ export default function ReservarPage() {
 
   function continueToDate() {
     if (!customerName.trim()) {
-      setMessage('Completa tu nombre.')
+      setMessage(t.completeName)
       return
     }
 
     if (!isValidPhoneNumber(customerPhone)) {
-      setMessage('Ingresa un número de teléfono válido.')
+      setMessage(t.invalidPhone)
       return
     }
 
@@ -116,7 +227,7 @@ export default function ReservarPage() {
     setSelectedSlot('')
 
     if (isPastDate(date)) {
-      setMessage('No puedes reservar en una fecha pasada.')
+      setMessage(t.pastDate)
       setLoadingSlots(false)
       return
     }
@@ -130,7 +241,7 @@ export default function ReservarPage() {
       .maybeSingle()
 
     if (dayOff) {
-      setMessage(`Este día no está disponible. Motivo: ${dayOff.reason}`)
+      setMessage(t.dayUnavailable + ` ${dayOff.reason}`)
       setLoadingSlots(false)
       return
     }
@@ -141,7 +252,7 @@ export default function ReservarPage() {
       .eq('day_of_week', dayOfWeek)
 
     if (rulesError) {
-      setMessage('Error cargando horarios.')
+      setMessage(t.loadingScheduleError)
       setLoadingSlots(false)
       return
     }
@@ -149,7 +260,7 @@ export default function ReservarPage() {
     const activeRules = (rules || []).filter((rule) => rule.is_active !== false)
 
     if (activeRules.length === 0) {
-      setMessage('No trabajamos este día.')
+      setMessage(t.closedDay)
       setLoadingSlots(false)
       return
     }
@@ -170,7 +281,7 @@ export default function ReservarPage() {
     const duration = Number(selectedService.duration_minutes)
 
     if (!duration || duration <= 0) {
-      setMessage('Este servicio no tiene una duración válida.')
+      setMessage(t.invalidDuration)
       setLoadingSlots(false)
       return
     }
@@ -214,7 +325,7 @@ export default function ReservarPage() {
     setSlots(uniqueAvailable)
 
     if (uniqueAvailable.length === 0) {
-      setMessage('No hay horarios disponibles para esta fecha.')
+      setMessage(t.noSlots)
     }
 
     setLoadingSlots(false)
@@ -227,17 +338,17 @@ export default function ReservarPage() {
 
   async function submitBooking() {
     if (!selectedService || !date || !selectedSlot) {
-      setMessage('Selecciona servicio, fecha y hora.')
+      setMessage(t.selectAll)
       return
     }
 
     if (!customerName.trim()) {
-      setMessage('Completa tu nombre.')
+      setMessage(t.completeName)
       return
     }
 
     if (!isValidPhoneNumber(customerPhone)) {
-      setMessage('Ingresa un número de teléfono válido.')
+      setMessage(t.invalidPhone)
       return
     }
 
@@ -262,23 +373,27 @@ export default function ReservarPage() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => null)
-      setMessage(data?.error || 'No se pudo crear la reserva.')
+      setMessage(data?.error || t.createError)
       setSubmitting(false)
       setConfirmOpen(false)
       return
     }
 
-    window.location.href = `/reserva-confirmada?name=${encodeURIComponent(
-      customerName
-    )}&service=${encodeURIComponent(selectedService.name)}&date=${date}&time=${selectedSlot}`
+    const params = new URLSearchParams({
+      name: customerName,
+      service: serviceName(selectedService),
+      date,
+      time: selectedSlot,
+    })
+
+    if (language === 'en') params.set('lang', 'en')
+
+    window.location.href = `/reserva-confirmada?${params.toString()}`
   }
 
   if (loading || !business) {
     return (
-      <NeutralLoader
-        eyebrow="Reserva online"
-        title="Cargando disponibilidad..."
-      />
+      <NeutralLoader eyebrow={t.loadingEyebrow} title={t.loadingTitle} />
     )
   }
 
@@ -290,20 +405,20 @@ export default function ReservarPage() {
       >
         <section className="w-full max-w-lg border border-white/10 bg-[var(--app-surface)] p-6 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
-            Reservas pausadas
+            {t.pausedEyebrow}
           </p>
 
           <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em]">
-            Las reservas no están disponibles ahora mismo.
+            {t.pausedTitle}
           </h1>
 
           <p className="mt-4 text-sm leading-7 text-[var(--app-muted)]">
-            El negocio ha pausado temporalmente las reservas online. Puedes volver más tarde o contactar directamente.
+            {t.pausedText}
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <Link href="/" className="btn-secondary">
-              Volver al inicio
+            <Link href={`/${langQuery}`} className="btn-secondary">
+              {t.home}
             </Link>
 
             {business?.whatsapp && (
@@ -329,14 +444,14 @@ export default function ReservarPage() {
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[var(--app-bg)]/85 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
           <Link href="/" className="text-sm font-semibold tracking-wide">
-            {business?.name || 'NEGOCIO'}
+            {business?.name || 'Champions Barbershop'}
           </Link>
 
           <Link
-            href="/"
+            href={`/${langQuery}`}
             className="border border-white/15 px-4 py-2 text-sm font-semibold text-[var(--app-muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
-            Volver
+            {t.back}
           </Link>
         </div>
       </header>
@@ -345,30 +460,30 @@ export default function ReservarPage() {
         <aside className="lg:sticky lg:top-28 lg:h-fit">
           <div className="border border-white/10 bg-[var(--app-surface)] p-5 sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
-              Reserva online
+              {t.bookingEyebrow}
             </p>
 
             <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">
-              Agenda tu próxima visita.
+              {t.bookingTitle}
             </h1>
 
             <p className="mt-5 text-sm leading-7 text-[var(--app-muted)]">
-              Completa los pasos. Cada sección se abre automáticamente al avanzar.
+              {t.bookingText}
             </p>
 
             <div className="mt-6 border-t border-white/10 pt-5">
-              <SummaryRow label="Servicio" value={selectedService?.name || 'Pendiente'} />
-              <SummaryRow label="Cliente" value={customerName || 'Pendiente'} />
+              <SummaryRow label={t.service} value={selectedService ? serviceName(selectedService) : t.pending} />
+              <SummaryRow label={t.customer} value={customerName || t.pending} />
               <SummaryRow
-                label="Fecha"
-                value={date ? formatDate(date) : 'Pendiente'}
+                label={t.date}
+                value={date ? formatDate(date) : t.pending}
               />
               <SummaryRow
-                label="Hora"
+                label={t.time}
                 value={
                   selectedSlot
                     ? formatTime(selectedSlot, business?.time_format || '24h')
-                    : 'Pendiente'
+                    : t.pending
                 }
               />
             </div>
@@ -378,11 +493,12 @@ export default function ReservarPage() {
         <div className="space-y-3">
           <AccordionPanel
             step="01"
-            title="Servicio"
+            title={t.service}
             active={activeStep === 'service'}
             completed={Boolean(selectedService)}
             summary={selectedService?.name}
             onOpen={() => setActiveStep('service')}
+            completedText={t.selected}
           >
             <div className="grid gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-2">
               {services.map((service) => {
@@ -399,9 +515,9 @@ export default function ReservarPage() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <h3 className="text-lg font-semibold">{service.name}</h3>
+                        <h3 className="text-lg font-semibold">{serviceName(service)}</h3>
                         <p className="mt-2 line-clamp-2 text-sm leading-6 text-[var(--app-muted)]">
-                          {service.description}
+                          {serviceDescription(service)}
                         </p>
                       </div>
 
@@ -422,19 +538,20 @@ export default function ReservarPage() {
 
           <AccordionPanel
             step="02"
-            title="Datos del cliente"
+            title={t.stepCustomer}
             active={activeStep === 'client'}
             completed={Boolean(customerName.trim() && isValidPhoneNumber(customerPhone))}
             summary={customerName || undefined}
             disabled={!selectedService}
             onOpen={() => selectedService && setActiveStep('client')}
+            completedText={t.selected}
           >
             <div className="grid gap-3 sm:grid-cols-2">
-              <Input value={customerName} onChange={setCustomerName} placeholder="Nombre completo" />
+              <Input value={customerName} onChange={setCustomerName} placeholder={t.fullName} />
               <PhoneField value={customerPhone} onChange={setCustomerPhone} />
 
               <div className="sm:col-span-2">
-                <Input value={customerEmail} onChange={setCustomerEmail} placeholder="Email opcional" />
+                <Input value={customerEmail} onChange={setCustomerEmail} placeholder={t.optionalEmail} />
               </div>
             </div>
 
@@ -442,35 +559,37 @@ export default function ReservarPage() {
               onClick={continueToDate}
               className="mt-5 bg-[var(--brand)] px-6 py-4 text-sm font-semibold text-[var(--app-bg)] transition hover:opacity-90"
             >
-              Continuar
+              {t.continue}
             </button>
           </AccordionPanel>
 
           <AccordionPanel
             step="03"
-            title="Fecha"
+            title={t.stepDate}
             active={activeStep === 'date'}
             completed={Boolean(date)}
             summary={date || undefined}
             disabled={!selectedService || !customerName.trim() || !isValidPhoneNumber(customerPhone)}
             onOpen={() => selectedService && customerName && customerPhone && setActiveStep('date')}
+            completedText={t.selected}
           >
             <DateSelector value={date} onChange={selectDate} days={21} />
           </AccordionPanel>
 
           <AccordionPanel
             step="04"
-            title="Horario"
+            title={t.stepTime}
             active={activeStep === 'time'}
             completed={Boolean(selectedSlot)}
             summary={selectedSlot || undefined}
             disabled={!date}
             onOpen={() => date && setActiveStep('time')}
+            completedText={t.selected}
           >
             {loadingSlots && (
               <div className="space-y-4">
                 <p className="text-sm text-[var(--app-muted)]">
-                  Calculando disponibilidad...
+                  {t.calculating}
                 </p>
                 <div className="h-1 overflow-hidden bg-white/10">
                   <div className="h-full w-1/2 animate-loading-bar bg-[var(--brand)]" />
@@ -497,9 +616,12 @@ export default function ReservarPage() {
       </section>
 
       {confirmOpen && selectedService && (
+
         <ConfirmModal
           business={business}
           service={selectedService}
+          serviceName={serviceName(selectedService)}
+          language={language}
           name={customerName}
           phone={customerPhone}
           date={date}
@@ -518,6 +640,7 @@ function AccordionPanel({
   title,
   active,
   completed,
+  completedText,
   disabled,
   summary,
   onOpen,
@@ -527,6 +650,7 @@ function AccordionPanel({
   title: string
   active: boolean
   completed?: boolean
+  completedText: string
   disabled?: boolean
   summary?: string
   onOpen: () => void
@@ -550,7 +674,7 @@ function AccordionPanel({
             </span>
             {completed && (
               <span className="border border-[var(--brand)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--brand)]">
-                Listo
+                {completedText}
               </span>
             )}
           </div>
@@ -588,6 +712,8 @@ function AccordionPanel({
 function ConfirmModal({
   business,
   service,
+  serviceName,
+  language,
   name,
   phone,
   date,
@@ -598,6 +724,8 @@ function ConfirmModal({
 }: {
   business: any
   service: Service
+  serviceName: string
+  language: 'es' | 'en'
   name: string
   phone: string
   date: string
@@ -606,16 +734,48 @@ function ConfirmModal({
   onClose: () => void
   onConfirm: () => void
 }) {
+  const t = {
+    es: {
+      eyebrow: 'Confirmar cita',
+      title: 'Revisa tu reserva',
+      close: 'Cerrar',
+      business: 'Negocio',
+      customer: 'Cliente',
+      phone: 'Teléfono',
+      service: 'Servicio',
+      date: 'Fecha',
+      time: 'Hora',
+      price: 'Precio',
+      edit: 'Editar',
+      confirming: 'Confirmando...',
+      confirm: 'Confirmar cita',
+    },
+    en: {
+      eyebrow: 'Confirm booking',
+      title: 'Review your booking',
+      close: 'Close',
+      business: 'Business',
+      customer: 'Customer',
+      phone: 'Phone',
+      service: 'Service',
+      date: 'Date',
+      time: 'Time',
+      price: 'Price',
+      edit: 'Edit',
+      confirming: 'Confirming...',
+      confirm: 'Confirm booking',
+    },
+  }[language]
   return (
     <div className="fixed inset-0 z-[100] flex items-end bg-black/70 p-0 sm:items-center sm:p-5">
       <section className="animate-modal-in max-h-[92dvh] w-full overflow-y-auto border border-white/10 bg-[var(--app-bg)] p-5 text-[var(--app-text)] shadow-2xl sm:mx-auto sm:max-w-lg sm:p-6">
         <div className="flex items-start justify-between gap-5 border-b border-white/10 pb-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
-              Confirmar cita
+              {t.eyebrow}
             </p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-              Revisa tu reserva
+              {t.title}
             </h2>
           </div>
 
@@ -623,22 +783,22 @@ function ConfirmModal({
             onClick={onClose}
             className="btn-secondary px-3 py-2"
           >
-            Cerrar
+            {t.close}
           </button>
         </div>
 
         <div className="mt-5 divide-y divide-white/10 border border-white/10">
-          <ModalRow label="Negocio" value={business?.name || 'NEGOCIO'} />
-          <ModalRow label="Cliente" value={name} />
-          <ModalRow label="Teléfono" value={phone} />
-          <ModalRow label="Servicio" value={service.name} />
-          <ModalRow label="Fecha" value={date ? formatDate(date) : '—'} />
+          <ModalRow label={t.business} value={business?.name || 'Champions Barbershop'} />
+          <ModalRow label={t.customer} value={name} />
+          <ModalRow label={t.phone} value={phone} />
+          <ModalRow label={t.service} value={serviceName} />
+          <ModalRow label={t.date} value={date ? formatDate(date) : '—'} />
           <ModalRow
-            label="Hora"
+            label={t.time}
             value={formatTime(time, business?.time_format || '24h')}
           />
           <ModalRow
-            label="Precio"
+            label={t.price}
             value={formatCurrency(Number(service.price), business?.currency || 'EUR')}
           />
         </div>
@@ -648,7 +808,7 @@ function ConfirmModal({
             onClick={onClose}
             className="btn-secondary"
           >
-            Editar
+            {t.edit}
           </button>
 
           <button
@@ -656,7 +816,7 @@ function ConfirmModal({
             disabled={submitting}
             className="btn-primary disabled:opacity-50"
           >
-            {submitting ? 'Confirmando...' : 'Confirmar cita'}
+            {submitting ? t.confirming : t.confirm}
           </button>
         </div>
       </section>

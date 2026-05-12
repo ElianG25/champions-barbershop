@@ -9,9 +9,17 @@ import { supabase } from '@/lib/supabaseClient'
 import { NeutralLoader } from '@/components/ui/NeutralLoader'
 import { Check } from 'lucide-react'
 
+
 export default function ReservaConfirmadaPage() {
   return (
-    <Suspense fallback={<NeutralLoader eyebrow="Confirmación" title="Preparando detalles..." />}>
+    <Suspense
+      fallback={
+        <NeutralLoader
+          eyebrow="Confirmación"
+          title="Preparando detalles..."
+        />
+      }
+    >
       <SuccessContent />
     </Suspense>
   )
@@ -21,6 +29,42 @@ function SuccessContent() {
   const params = useSearchParams()
   const [business, setBusiness] = useState<any>(null)
   const [loadingBusiness, setLoadingBusiness] = useState(true)
+
+  const language = params.get('lang') === 'en' ? 'en' : 'es'
+  const langQuery = language === 'en' ? '?lang=en' : ''
+
+  const COPY = {
+    es: {
+      badge: 'Reserva confirmada',
+      title: 'Tu cita quedó agendada.',
+      text: 'Hemos recibido tu reserva correctamente. Guarda esta información para el día de tu visita.',
+      home: 'Volver al inicio',
+      another: 'Crear otra reserva',
+      details: 'Detalles de la cita',
+      waiting: 'te espera en la fecha y hora seleccionada.',
+      customer: 'Cliente',
+      service: 'Servicio',
+      date: 'Fecha',
+      time: 'Hora',
+      note: 'Si necesitas cambiar o cancelar tu cita, contacta directamente con el negocio.',
+    },
+    en: {
+      badge: 'Booking confirmed',
+      title: 'Your appointment is booked.',
+      text: 'We have received your booking successfully. Save this information for your visit.',
+      home: 'Back home',
+      another: 'Book another appointment',
+      details: 'Appointment details',
+      waiting: 'is expecting you at the selected date and time.',
+      customer: 'Customer',
+      service: 'Service',
+      date: 'Date',
+      time: 'Time',
+      note: 'If you need to change or cancel your appointment, please contact the business directly.',
+    },
+  }
+
+  const t = COPY[language]
 
   useEffect(() => {
     async function loadBusiness() {
@@ -39,8 +83,8 @@ function SuccessContent() {
   if (loadingBusiness || !business) {
     return (
       <NeutralLoader
-        eyebrow="Confirmación"
-        title="Preparando detalles..."
+        eyebrow={language === 'en' ? 'Confirmation' : 'Confirmación'}
+        title={language === 'en' ? 'Preparing details...' : 'Preparando detalles...'}
       />
     )
   }
@@ -58,30 +102,29 @@ function SuccessContent() {
       <section className="mx-auto grid min-h-screen max-w-7xl items-center gap-10 px-5 py-10 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
         <div className="animate-fade-in">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--brand)]">
-            Reserva confirmada
+            {t.badge}
           </p>
 
           <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-[0.95] tracking-[-0.06em] sm:text-6xl">
-            Tu cita quedó agendada.
+            {t.title}
           </h1>
 
           <p className="mt-6 max-w-lg text-base leading-8 text-[var(--app-muted)]">
-            Hemos recibido tu reserva correctamente. Guarda esta información para el día de tu visita.
+            {t.text}
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/"
+            <Link href={`/${langQuery}`}
               className="bg-[var(--brand)] px-6 py-4 text-center text-sm font-semibold text-[var(--app-bg)] transition hover:opacity-90"
             >
-              Volver al inicio
+              {t.home}
             </Link>
 
             <Link
-              href="/reservar"
+              href={`/reservar${langQuery}`}
               className="border border-white/15 px-6 py-4 text-center text-sm font-semibold text-[var(--app-text)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
-              Crear otra reserva
+              {t.another}
             </Link>
           </div>
         </div>
@@ -93,27 +136,27 @@ function SuccessContent() {
             </div>
 
             <h2 className="mt-5 text-2xl font-semibold tracking-[-0.03em]">
-              Detalles de la cita
+              {t.details}
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-[var(--app-muted)]">
-              {business?.name || 'El negocio'} te espera en la fecha y hora seleccionada.
+              {business?.name || 'Champions Barbershop'} {t.waiting}
             </p>
           </div>
 
           <div className="mt-6 divide-y divide-white/10 border border-white/10">
-            <InfoRow label="Cliente" value={name || '—'} />
-            <InfoRow label="Servicio" value={service || '—'} />
-            <InfoRow label="Fecha" value={date ? formatDate(date) : '—'} />
+            <InfoRow label={t.customer} value={name || '—'} />
+            <InfoRow label={t.service} value={service || '—'} />
+            <InfoRow label={t.date} value={date ? formatDate(date) : '—'} />
             <InfoRow
-              label="Hora"
+              label={t.time}
               value={time ? formatTime(time, business?.time_format || '24h') : '—'}
             />
           </div>
 
           <div className="mt-6 border border-white/10 bg-white/[0.04] p-4">
             <p className="text-sm leading-6 text-[var(--app-muted)]">
-              Si necesitas cambiar o cancelar tu cita, contacta directamente con el negocio.
+              {t.note}
             </p>
           </div>
         </div>

@@ -18,14 +18,15 @@ import {
     CalendarDays,
     CheckCircle2,
     Clock,
-    MessageCircle,
-    RefreshCcw,
-    Search,
     XCircle,
-    Users,
     Scissors,
     Settings,
     CalendarClock,
+    Package,
+    Plus,
+    Pencil,
+    Trash2,
+    ImageIcon,
 } from 'lucide-react'
 import {
     clearAdminActivity,
@@ -45,7 +46,7 @@ import { SectionHeader } from '@/components/admin/SectionHeader'
 import { AdminPanel } from '@/components/admin/AdminPanel'
 import { StatusBadge, ActiveBadge } from '@/components/admin/StatusBadge'
 
-type Section = 'home' | 'appointments' | 'services' | 'schedule' | 'settings'
+type Section = 'home' | 'appointments' | 'services' | 'products' | 'schedule' | 'settings'
 type AppointmentFilter =
     | 'today'
     | 'tomorrow'
@@ -66,6 +67,7 @@ const NAV_ITEMS: {
         { id: 'home', label: 'Panel', mobileLabel: 'Inicio', icon: <CalendarClock size={16} /> },
         { id: 'appointments', label: 'Citas', mobileLabel: 'Citas', icon: <CalendarDays size={16} /> },
         { id: 'services', label: 'Servicios', mobileLabel: 'Servicios', icon: <Scissors size={16} /> },
+        { id: 'products', label: 'Productos', mobileLabel: 'Productos', icon: <Package size={16} />, },
         { id: 'schedule', label: 'Disponibilidad', mobileLabel: 'Horario', icon: <Clock size={16} /> },
         { id: 'settings', label: 'Ajustes', mobileLabel: 'Ajustes', icon: <Settings size={16} /> },
     ]
@@ -74,6 +76,7 @@ const SECTION_TITLES: Record<Section, string> = {
     home: 'Panel de control',
     appointments: 'Citas',
     services: 'Servicios',
+    products: 'Productos',
     schedule: 'Disponibilidad',
     settings: 'Ajustes',
 }
@@ -92,6 +95,7 @@ export default function AdminPage() {
     const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>('today')
     const [calendarOpen, setCalendarOpen] = useState(false)
     const [whatsappAppointment, setWhatsappAppointment] = useState<any>(null)
+    const [products, setProducts] = useState<any[]>([])
 
     useEffect(() => {
         bootstrap()
@@ -172,21 +176,32 @@ export default function AdminPage() {
     }
 
     async function loadData() {
-        const [businessResult, appointmentResult, serviceResult, availabilityResult] =
-            await Promise.all([
-                supabase.from('business_settings').select('*').single(),
-                supabase
-                    .from('appointments')
-                    .select('*, services(name, price, duration_minutes)')
-                    .order('date', { ascending: true })
-                    .order('start_time', { ascending: true }),
-                supabase.from('services').select('*').order('price'),
-                supabase.from('availability_rules').select('*').order('day_of_week'),
-            ])
+        const [
+            businessResult,
+            appointmentResult,
+            serviceResult,
+            productResult,
+            availabilityResult,
+        ] = await Promise.all([
+            supabase.from('business_settings').select('*').single(),
+            supabase
+                .from('appointments')
+                .select('*, services(name, price, duration_minutes)')
+                .order('date', { ascending: true })
+                .order('start_time', { ascending: true }),
+            supabase.from('services').select('*').order('price'),
+            supabase
+                .from('products')
+                .select('*')
+                .order('sort_order', { ascending: true })
+                .order('created_at', { ascending: false }),
+            supabase.from('availability_rules').select('*').order('day_of_week'),
+        ])
 
         setBusiness(businessResult.data)
         setAppointments(appointmentResult.data || [])
         setServices(serviceResult.data || [])
+        setProducts(productResult.data || [])
         setAvailability(availabilityResult.data || [])
     }
 
@@ -363,7 +378,7 @@ export default function AdminPage() {
                                 Admin
                             </p>
                             <h1 className="mt-3 text-xl font-semibold tracking-[-0.03em]">
-                                {business?.name || 'NEGOCIO'}
+                                {business?.name || 'Champions Barbershop'}
                             </h1>
                         </div>
 
@@ -436,6 +451,16 @@ export default function AdminPage() {
                             />
                         )}
 
+                        {section === 'products' && (
+                            <ProductsSection
+                                products={products}
+                                business={business}
+                                reload={loadData}
+                                notify={notify}
+                                askConfirm={askConfirm}
+                            />
+                        )}
+
                         {section === 'schedule' && (
                             <ScheduleSection
                                 availability={availability}
@@ -464,6 +489,8 @@ export default function AdminPage() {
                 <RescheduleModal
                     appointment={rescheduleAppointment}
                     business={business}
+                    askConfirm={askConfirm}
+                    notify={notify}
                     onClose={() => setRescheduleAppointment(null)}
                     onUpdated={async () => {
                         setRescheduleAppointment(null)
@@ -509,7 +536,7 @@ function WhatsAppNotifyModal({
 
 📅 *Tu cita ha sido confirmada*
 
-🏢 *Negocio:* ${business?.name || 'Nuestro negocio'}
+🏢 *Negocio:* ${business?.name || 'Champions Barbershop'}
 🗓️ *Fecha:* ${formatDate(appointment.date)}
 🕒 *Hora:* ${formatTime(
         appointment.start_time,
@@ -684,7 +711,7 @@ function HomeSection({
                 </div>
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            <div className="mt-6 grid gap-4 lg:grid-cols-4">
                 <QuickAction
                     title="Citas"
                     text="Revisa, cancela o reagenda reservas."
@@ -699,6 +726,11 @@ function HomeSection({
                     title="Disponibilidad"
                     text="Gestiona horarios, descansos y días libres."
                     onClick={() => setSection('schedule')}
+                />
+                <QuickAction
+                    title="Productos"
+                    text="Gestiona productos visibles en la landing."
+                    onClick={() => setSection('products')}
                 />
             </div>
         </section>
@@ -797,7 +829,7 @@ function DesktopNav({ section, setSection }: { section: Section; setSection: (se
 function MobileNav({ section, setSection }: { section: Section; setSection: (section: Section) => void }) {
     return (
         <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[var(--app-bg)]/95 px-2 py-2 backdrop-blur-xl lg:hidden">
-            <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+            <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
                 {NAV_ITEMS.map((item) => (
                     <button
                         key={item.id}
@@ -1106,6 +1138,226 @@ function ServicesSection({
     )
 }
 
+function ProductsSection({
+    products,
+    business,
+    reload,
+    notify,
+    askConfirm,
+}: {
+    products: any[]
+    business: any
+    reload: AsyncVoid
+    notify: (title: string, message?: string, tone?: 'success' | 'danger' | 'info') => void
+    askConfirm: (options: {
+        title: string
+        message?: string
+        tone?: 'danger' | 'info'
+        onConfirm: () => void | Promise<void>
+    }) => void
+}) {
+    const [productModalOpen, setProductModalOpen] = useState(false)
+    const [editingProduct, setEditingProduct] = useState<any | null>(null)
+
+    function openCreateModal() {
+        setEditingProduct(null)
+        setProductModalOpen(true)
+    }
+
+    function openEditModal(product: any) {
+        setEditingProduct(product)
+        setProductModalOpen(true)
+    }
+
+    function deleteProduct(id: string) {
+        askConfirm({
+            title: 'Eliminar producto',
+            message: 'Este producto dejará de aparecer en la web pública.',
+            tone: 'danger',
+            onConfirm: async () => {
+                const { error } = await supabase.from('products').delete().eq('id', id)
+
+                if (error) {
+                    notify('No se pudo eliminar el producto', 'Intenta nuevamente.', 'danger')
+                    return
+                }
+
+                await reload()
+                notify('Producto eliminado', 'El producto fue eliminado correctamente.', 'success')
+            },
+        })
+    }
+
+    return (
+        <section className="animate-fade-in">
+            <SectionHeader
+                eyebrow="Catálogo"
+                title="Productos"
+                description="Gestiona productos informativos que aparecerán en el landing. No se venden online; solo se muestran al cliente."
+                action={
+                    <button onClick={openCreateModal} className="btn-primary inline-flex items-center gap-2">
+                        <Plus size={16} />
+                        Nuevo producto
+                    </button>
+                }
+            />
+
+            <div className="mt-6 hidden overflow-hidden border border-white/10 bg-white/10 lg:block">
+                <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-[var(--app-surface)] text-xs uppercase tracking-wide text-[var(--app-muted)]">
+                        <tr>
+                            <th className="px-5 py-4 font-semibold">Producto</th>
+                            <th className="px-5 py-4 font-semibold">Precio</th>
+                            <th className="px-5 py-4 font-semibold">Orden</th>
+                            <th className="px-5 py-4 font-semibold">Estado</th>
+                            <th className="px-5 py-4 text-right font-semibold">Acciones</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {products.map((product) => (
+                            <tr
+                                key={product.id}
+                                className="border-t border-white/10 bg-[var(--app-surface)] transition hover:bg-white/[0.04]"
+                            >
+                                <td className="px-5 py-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border border-white/10 bg-white/[0.04]">
+                                            {product.image_url ? (
+                                                <img
+                                                    src={product.image_url}
+                                                    alt={product.name}
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                <ImageIcon size={18} className="text-[var(--app-muted)]" />
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <p className="font-semibold">{product.name}</p>
+                                            <p className="mt-1 max-w-xl overflow-hidden text-ellipsis text-xs leading-5 text-[var(--app-muted)] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                                                {product.description || 'Sin descripción'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <td className="px-5 py-4 font-semibold text-[var(--brand)]">
+                                    {formatCurrency(Number(product.price || 0), business?.currency || 'EUR')}
+                                </td>
+
+                                <td className="px-5 py-4 text-[var(--app-muted)]">
+                                    {product.sort_order ?? 0}
+                                </td>
+
+                                <td className="px-5 py-4">
+                                    <ActiveBadge active={Boolean(product.is_active)} />
+                                </td>
+
+                                <td className="px-5 py-4">
+                                    <div className="flex justify-end gap-2">
+                                        <AdminButton
+                                            icon={<Pencil size={14} />}
+                                            onClick={() => openEditModal(product)}
+                                        >
+                                            Editar
+                                        </AdminButton>
+
+                                        <AdminButton
+                                            tone="danger"
+                                            icon={<Trash2 size={14} />}
+                                            onClick={() => deleteProduct(product.id)}
+                                        >
+                                            Eliminar
+                                        </AdminButton>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            <div className="mt-6 grid gap-3 lg:hidden">
+                {products.map((product) => (
+                    <AdminCard key={product.id}>
+                        <div className="flex items-start gap-4">
+                            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden border border-white/10 bg-white/[0.04]">
+                                {product.image_url ? (
+                                    <img
+                                        src={product.image_url}
+                                        alt={product.name}
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <ImageIcon size={20} className="text-[var(--app-muted)]" />
+                                )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-3">
+                                    <p className="truncate text-lg font-semibold">{product.name}</p>
+                                    <ActiveBadge active={Boolean(product.is_active)} />
+                                </div>
+
+                                <p className="mt-1 text-sm font-semibold text-[var(--brand)]">
+                                    {formatCurrency(Number(product.price || 0), business?.currency || 'EUR')}
+                                </p>
+
+                                <p className="mt-2 overflow-hidden text-ellipsis text-sm leading-6 text-[var(--app-muted)] [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                                    {product.description || 'Sin descripción'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                            <AdminButton
+                                full
+                                primary
+                                icon={<Pencil size={14} />}
+                                onClick={() => openEditModal(product)}
+                            >
+                                Editar
+                            </AdminButton>
+
+                            <AdminButton
+                                full
+                                tone="danger"
+                                icon={<Trash2 size={14} />}
+                                onClick={() => deleteProduct(product.id)}
+                            >
+                                Eliminar
+                            </AdminButton>
+                        </div>
+                    </AdminCard>
+                ))}
+            </div>
+
+            {products.length === 0 && (
+                <div className="mt-6 border border-white/10 bg-[var(--app-surface)] p-6">
+                    <p className="text-sm text-[var(--app-muted)]">
+                        No hay productos creados todavía.
+                    </p>
+                </div>
+            )}
+
+            {productModalOpen && (
+                <ProductModal
+                    product={editingProduct}
+                    business={business}
+                    onClose={() => setProductModalOpen(false)}
+                    onSaved={async () => {
+                        setProductModalOpen(false)
+                        await reload()
+                    }}
+                    notify={notify}
+                />
+            )}
+        </section>
+    )
+}
+
 function ServiceFormModal({
     service,
     onClose,
@@ -1230,6 +1482,178 @@ function ServiceFormModal({
     )
 }
 
+function ProductModal({
+    product,
+    business,
+    onClose,
+    onSaved,
+    notify,
+}: {
+    product: any | null
+    business: any
+    onClose: () => void
+    onSaved: () => Promise<void>
+    notify: (title: string, message?: string, tone?: 'success' | 'danger' | 'info') => void
+}) {
+    const [name, setName] = useState(product?.name || '')
+    const [description, setDescription] = useState(product?.description || '')
+    const [imageUrl, setImageUrl] = useState(product?.image_url || '')
+    const [price, setPrice] = useState(product?.price || 0)
+    const [sortOrder, setSortOrder] = useState(product?.sort_order || 0)
+    const [isActive, setIsActive] = useState(product?.is_active ?? true)
+    const [saving, setSaving] = useState(false)
+
+    const isEditing = Boolean(product?.id)
+
+    async function saveProduct() {
+        if (!name.trim()) {
+            notify('Nombre obligatorio', 'Debes indicar el nombre del producto.', 'danger')
+            return
+        }
+
+        setSaving(true)
+
+        const payload = {
+            name: name.trim(),
+            description: description.trim() || null,
+            image_url: imageUrl.trim() || null,
+            price: Number(price || 0),
+            sort_order: Number(sortOrder || 0),
+            is_active: Boolean(isActive),
+        }
+
+        const { error } = isEditing
+            ? await supabase.from('products').update(payload).eq('id', product.id)
+            : await supabase.from('products').insert(payload)
+
+        setSaving(false)
+
+        if (error) {
+            notify('No se pudo guardar el producto', 'Intenta nuevamente.', 'danger')
+            return
+        }
+
+        notify(
+            isEditing ? 'Producto actualizado' : 'Producto creado',
+            'Los cambios fueron guardados correctamente.',
+            'success'
+        )
+
+        await onSaved()
+    }
+
+    return (
+        <AdminModal
+            eyebrow={isEditing ? 'Editar producto' : 'Nuevo producto'}
+            title={isEditing ? product.name : 'Crear producto'}
+            onClose={onClose}
+            size="lg"
+            footer={
+                <ModalFooter
+                    onCancel={onClose}
+                    onConfirm={saveProduct}
+                    confirmText={saving ? 'Guardando...' : 'Guardar producto'}
+                    disabled={saving}
+                />
+            }
+        >
+            <div className="grid gap-6 lg:grid-cols-[1fr_220px]">
+                <div className="space-y-4">
+                    <FieldLabel label="Nombre">
+                        <input
+                            value={name}
+                            onChange={(event) => setName(event.target.value)}
+                            placeholder="Ej. Pomada premium"
+                            className="admin-input"
+                        />
+                    </FieldLabel>
+
+                    <FieldLabel label="Descripción">
+                        <textarea
+                            value={description}
+                            onChange={(event) => setDescription(event.target.value)}
+                            rows={4}
+                            placeholder="Descripción visible en el landing"
+                            className="admin-input"
+                        />
+                    </FieldLabel>
+
+                    <FieldLabel label="URL de imagen">
+                        <input
+                            value={imageUrl}
+                            onChange={(event) => setImageUrl(event.target.value)}
+                            placeholder="https://..."
+                            className="admin-input"
+                        />
+                    </FieldLabel>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <FieldLabel label="Precio">
+                            <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={price}
+                                onChange={(event) => setPrice(Number(event.target.value))}
+                                className="admin-input"
+                            />
+                        </FieldLabel>
+
+                        <FieldLabel label="Orden">
+                            <input
+                                type="number"
+                                min={0}
+                                value={sortOrder}
+                                onChange={(event) => setSortOrder(Number(event.target.value))}
+                                className="admin-input"
+                            />
+                        </FieldLabel>
+                    </div>
+
+                    <ToggleField
+                        label="Producto activo"
+                        description="Si está activo, aparecerá en la sección de productos del landing."
+                        checked={Boolean(isActive)}
+                        onChange={setIsActive}
+                    />
+                </div>
+
+                <div className="border border-white/10 bg-white/[0.04] p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
+                        Vista previa
+                    </p>
+
+                    <div className="aspect-square overflow-hidden border border-white/10 bg-white/[0.04]">
+                        {imageUrl ? (
+                            <img
+                                src={imageUrl}
+                                alt={name || 'Producto'}
+                                className="h-full w-full object-cover"
+                            />
+                        ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[var(--app-muted)]">
+                                <ImageIcon size={28} />
+                            </div>
+                        )}
+                    </div>
+
+                    <h3 className="mt-4 font-semibold">
+                        {name || 'Nombre del producto'}
+                    </h3>
+
+                    <p className="mt-2 overflow-hidden text-ellipsis text-sm leading-6 text-[var(--app-muted)] [display:-webkit-box] [-webkit-line-clamp:3] [-webkit-box-orient:vertical]">
+                        {description || 'Descripción del producto'}
+                    </p>
+
+                    <p className="mt-4 font-semibold text-[var(--brand)]">
+                        {formatCurrency(Number(price || 0), business?.currency || 'EUR')}
+                    </p>
+                </div>
+            </div>
+        </AdminModal>
+    )
+}
+
 function ScheduleSection({
     availability,
     setAvailability,
@@ -1283,10 +1707,6 @@ function ScheduleSection({
         setAvailability((prev: any[]) =>
             prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
         )
-    }
-
-    function updateBreakLocal(id: string, patch: any) {
-        setBreaks((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
     }
 
     async function createRule(day: number) {
@@ -1439,77 +1859,6 @@ function ScheduleSection({
             end_time: '15:00',
             is_active: true,
         })
-    }
-
-    async function updateBreak(breakItem: any) {
-        if (!breakItem.name?.trim()) {
-            notify('Motivo obligatorio', 'Debes indicar un motivo para este bloqueo.', 'danger')
-            return
-        }
-
-        const { data: affectedAppointments } = await supabase
-            .from('appointments')
-            .select('*')
-            .eq('date', breakItem.date)
-            .in('status', ['pending', 'confirmed'])
-
-        const appointmentsToCancel = (affectedAppointments || []).filter((appointment) =>
-            rangesOverlap(
-                String(breakItem.start_time).slice(0, 5),
-                String(breakItem.end_time).slice(0, 5),
-                String(appointment.start_time).slice(0, 5),
-                String(appointment.end_time).slice(0, 5)
-            )
-        )
-
-        async function saveBreak() {
-            const { error } = await supabase
-                .from('breaks')
-                .update({
-                    name: breakItem.name.trim(),
-                    date: breakItem.date,
-                    start_time: String(breakItem.start_time).slice(0, 5),
-                    end_time: String(breakItem.end_time).slice(0, 5),
-                    is_active: breakItem.is_active,
-                })
-                .eq('id', breakItem.id)
-
-            if (error) {
-                notify('No se pudo actualizar el bloqueo', 'Intenta nuevamente.', 'danger')
-                return
-            }
-
-            if (breakItem.is_active && appointmentsToCancel.length > 0) {
-                await supabase
-                    .from('appointments')
-                    .update({ status: 'cancelled' })
-                    .in('id', appointmentsToCancel.map((appointment) => appointment.id))
-            }
-
-            await loadAvailabilityExtras()
-            await reload()
-
-            notify(
-                'Bloqueo actualizado',
-                appointmentsToCancel.length > 0
-                    ? 'El bloqueo fue guardado y las citas afectadas fueron canceladas.'
-                    : 'El bloqueo fue guardado correctamente.',
-                'success'
-            )
-        }
-
-        if (breakItem.is_active && appointmentsToCancel.length > 0) {
-            askConfirm({
-                title: 'Bloqueo con citas existentes',
-                message: `Este bloqueo afecta ${appointmentsToCancel.length} cita(s). Si continúas, serán canceladas.`,
-                tone: 'danger',
-                onConfirm: saveBreak,
-            })
-
-            return
-        }
-
-        await saveBreak()
     }
 
     async function deleteBreak(id: string) {
@@ -1769,6 +2118,11 @@ function SettingsSection({
                 time_format: business.time_format,
                 currency: business.currency,
                 auto_confirm_appointments: business.auto_confirm_appointments,
+                products_enabled: Boolean(business.products_enabled),
+                reviews_enabled: Boolean(business.reviews_enabled),
+                google_reviews_url: business.google_reviews_url,
+                google_review_qr_url: business.google_review_qr_url,
+                lgbtq_friendly: Boolean(business.lgbtq_friendly),
             })
             .eq('id', business.id)
 
@@ -1844,21 +2198,69 @@ function SettingsSection({
                         />
                     </div>
                 </AdminPanel>
-                <label className="flex items-center justify-between gap-4 border border-white/10 bg-white/[0.04] px-4 py-4 opacity-60">
-                    <div>
-                        <p className="text-sm font-semibold">
-                            Varios trabajadores
-                            <span className="ml-2 border border-[var(--brand)] px-2 py-0.5 text-[10px] uppercase text-[var(--brand)]">
-                                Pronto
-                            </span>
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--app-muted)]">
-                            Permitirá asignar citas a barberos o profesionales diferentes.
-                        </p>
-                    </div>
 
-                    <input type="checkbox" disabled />
-                </label>
+                <AdminPanel
+                    title="Landing pública"
+                    description="Controla secciones visibles y enlaces públicos de la web."
+                >
+                    <div className="space-y-3 p-5">
+                        <ToggleField
+                            label="Mostrar productos"
+                            description="Activa o desactiva la sección completa de productos en la landing."
+                            checked={Boolean(business?.products_enabled)}
+                            onChange={(products_enabled) => updateBusinessLocal({ products_enabled })}
+                        />
+
+                        <ToggleField
+                            label="LGBTQ+ Friendly"
+                            description="Muestra mensajes de espacio inclusivo en la landing."
+                            checked={Boolean(business?.lgbtq_friendly)}
+                            onChange={(lgbtq_friendly) => updateBusinessLocal({ lgbtq_friendly })}
+                        />
+
+                        <ToggleField
+                            label="Mostrar reseñas"
+                            description="Activa o desactiva la sección de reseñas en la landing."
+                            checked={Boolean(business?.reviews_enabled)}
+                            onChange={(reviews_enabled) => updateBusinessLocal({ reviews_enabled })}
+                        />
+
+                        <TextField
+                            label="Link de reseñas Google"
+                            value={business?.google_reviews_url || ''}
+                            onChange={(google_reviews_url) => updateBusinessLocal({ google_reviews_url })}
+                        />
+
+                        <TextField
+                            label="URL del QR de reseñas"
+                            value={business?.google_review_qr_url || ''}
+                            onChange={(google_review_qr_url) => updateBusinessLocal({ google_review_qr_url })}
+                        />
+                    </div>
+                </AdminPanel>
+
+                <AdminPanel
+                    title="Próximas funciones"
+                    description="Opciones preparadas para versiones futuras."
+                >
+                    <div className="p-5">
+                        <label className="flex items-center justify-between gap-4 border border-white/10 bg-white/[0.04] px-4 py-4 opacity-60">
+                            <div>
+                                <p className="text-sm font-semibold">
+                                    Varios trabajadores
+                                    <span className="ml-2 border border-[var(--brand)] px-2 py-0.5 text-[10px] uppercase text-[var(--brand)]">
+                                        Pronto
+                                    </span>
+                                </p>
+                                <p className="mt-1 text-xs text-[var(--app-muted)]">
+                                    Permitirá asignar citas a barberos o profesionales diferentes.
+                                </p>
+                            </div>
+
+                            <input type="checkbox" disabled />
+                        </label>
+                    </div>
+                </AdminPanel>
             </div>
 
             <div className="mt-6">
@@ -1878,11 +2280,20 @@ function SettingsSection({
 function RescheduleModal({
     appointment,
     business,
+    askConfirm,
+    notify,
     onClose,
     onUpdated,
 }: {
     appointment: any
     business: any
+    askConfirm: (options: {
+        title: string
+        message?: string
+        tone?: 'danger' | 'info'
+        onConfirm: () => void | Promise<void>
+    }) => void
+    notify: (title: string, message?: string, tone?: 'success' | 'danger' | 'info') => void
     onClose: () => void
     onUpdated: AsyncVoid
 }) {
@@ -1895,7 +2306,6 @@ function RescheduleModal({
 
     const service = appointment.services
     const duration = Number(service?.duration_minutes || appointment.duration_minutes || 30)
-    const minDate = new Date().toISOString().split('T')[0]
 
     useEffect(() => {
         loadSlots()
@@ -1998,28 +2408,36 @@ function RescheduleModal({
             return
         }
 
-        const confirmed = confirm('¿Confirmas reagendar esta cita a la nueva fecha y hora?')
-        if (!confirmed) return
+        askConfirm({
+            title: 'Reagendar cita',
+            message: `¿Confirmas mover esta cita al ${formatDate(date)} a las ${formatTime(
+                selectedSlot,
+                business?.time_format || '24h'
+            )}?`,
+            tone: 'info',
+            onConfirm: async () => {
+                setSaving(true)
 
-        setSaving(true)
+                const { error } = await supabase
+                    .from('appointments')
+                    .update({
+                        date,
+                        start_time: selectedSlot,
+                        end_time: addMinutes(selectedSlot, duration),
+                    })
+                    .eq('id', appointment.id)
 
-        const { error } = await supabase
-            .from('appointments')
-            .update({
-                date,
-                start_time: selectedSlot,
-                end_time: addMinutes(selectedSlot, duration),
-            })
-            .eq('id', appointment.id)
+                setSaving(false)
 
-        setSaving(false)
+                if (error) {
+                    notify('No se pudo reagendar la cita', 'Intenta nuevamente.', 'danger')
+                    return
+                }
 
-        if (error) {
-            setMessage(error.message)
-            return
-        }
-
-        await onUpdated()
+                notify('Cita reagendada', 'La cita fue actualizada correctamente.', 'success')
+                await onUpdated()
+            },
+        })
     }
 
     return (
@@ -2041,13 +2459,7 @@ function RescheduleModal({
             </p>
 
             <FieldLabel label="Nueva fecha">
-                <input
-                    type="date"
-                    min={minDate}
-                    value={date}
-                    onChange={(event) => setDate(event.target.value)}
-                    className="admin-input"
-                />
+                <DateSelector value={date} onChange={setDate} days={30} />
             </FieldLabel>
 
             <div className="mt-6">
@@ -2056,19 +2468,13 @@ function RescheduleModal({
                 {loadingSlots && <p className="mt-3 text-sm text-[var(--app-muted)]">Buscando horarios...</p>}
 
                 {!loadingSlots && slots.length > 0 && (
-                    <div className="mt-4 grid grid-cols-3 gap-3">
-                        {slots.map((slot) => (
-                            <button
-                                key={slot}
-                                onClick={() => setSelectedSlot(slot)}
-                                className={`px-4 py-4 text-sm font-semibold transition ${selectedSlot === slot
-                                    ? 'bg-[var(--brand)] text-[var(--app-bg)]'
-                                    : 'bg-white/[0.06] text-[var(--app-text)] hover:bg-white/[0.08]'
-                                    }`}
-                            >
-                                {formatTime(slot, business?.time_format || '24h')}
-                            </button>
-                        ))}
+                    <div className="mt-4">
+                        <TimeSelector
+                            value={selectedSlot}
+                            options={slots}
+                            onChange={setSelectedSlot}
+                            timeFormat={business?.time_format || '24h'}
+                        />
                     </div>
                 )}
 
@@ -2236,15 +2642,6 @@ function InlineEmpty({ text }: { text: string }) {
         <div className="p-5">
             <p className="text-sm text-[var(--app-muted)]">{text}</p>
         </div>
-    )
-}
-
-function SkeletonLine({ width }: { width: string }) {
-    return (
-        <div
-            style={{ width }}
-            className="h-3 animate-pulse bg-white/10"
-        />
     )
 }
 

@@ -333,3 +333,22 @@ select:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 3px;
 }
+
+@keyframes reviews-marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.reviews-marquee {
+  animation: reviews-marquee 85s linear infinite;
+  will-change: transform;
+}
+
+.reviews-marquee:hover {
+  animation-play-state: paused;
+}
