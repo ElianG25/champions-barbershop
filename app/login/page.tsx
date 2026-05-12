@@ -183,7 +183,7 @@ export default function LoginPage() {
 
                 <a
                   href={`https://wa.me/${DEVELOPER_WHATSAPP}?text=${encodeURIComponent(
-                    'Hola Elian, necesito solicitar un nuevo usuario administrador para el sistema de reservas.'
+                    'Hola Elian, necesito solicitar un nuevo usuario administrador para el sistema de reservas de Champions Barbershop. Por favor, ¿podrías ayudarme con esto? Gracias.'
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
