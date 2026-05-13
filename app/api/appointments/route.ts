@@ -2,9 +2,22 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { getDayOfWeek, isPastDate, isPastSlot, rangesOverlap } from '@/lib/booking'
 
+function getClientIp(req: Request) {
+  const forwardedFor = req.headers.get('x-forwarded-for')
+  const realIp = req.headers.get('x-real-ip')
+
+  if (forwardedFor) return forwardedFor.split(',')[0].trim()
+  if (realIp) return realIp.trim()
+
+  return 'unknown'
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+
+    const clientIp = getClientIp(req)
+    const userAgent = req.headers.get('user-agent') || 'unknown'
 
     const {
       service_id,
@@ -15,7 +28,15 @@ export async function POST(req: Request) {
       start_time,
       end_time,
       notes,
+      device_fingerprint,
     } = body
+
+    const normalizedPhone = String(customer_phone || '').replace(/\D/g, '')
+
+    const deviceFingerprint =
+      typeof device_fingerprint === 'string' && device_fingerprint.trim()
+        ? device_fingerprint.trim()
+        : `${clientIp}:${userAgent}`
 
     if (
       !service_id ||
@@ -150,18 +171,62 @@ export async function POST(req: Request) {
       )
     }
 
+    const today = new Date().toISOString().split('T')[0]
+
+    const { data: recentBookings, error: recentBookingsError } = await supabase
+      .from('appointments')
+      .select('id, date, customer_phone, customer_ip, device_fingerprint, status')
+      .gte('date', today)
+      .in('status', ['pending', 'confirmed'])
+
+    if (recentBookingsError) {
+      return NextResponse.json(
+        { error: 'No se pudo validar el límite de reservas.' },
+        { status: 400 }
+      )
+    }
+
+    const sameIpBookings = (recentBookings || []).filter(
+      (appointment) => appointment.customer_ip === clientIp
+    )
+
+    const sameDeviceBookings = (recentBookings || []).filter(
+      (appointment) => appointment.device_fingerprint === deviceFingerprint
+    )
+
+    const samePhoneBookings = (recentBookings || []).filter(
+      (appointment) =>
+        String(appointment.customer_phone || '').replace(/\D/g, '') === normalizedPhone
+    )
+
+    if (
+      sameIpBookings.length >= 3 ||
+      sameDeviceBookings.length >= 2 ||
+      samePhoneBookings.length >= 2
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Has alcanzado el límite de reservas activas permitidas. Contacta al negocio para más asistencia.',
+        },
+        { status: 429 }
+      )
+    }
+
     const { data: appointment, error } = await supabase
       .from('appointments')
       .insert({
         service_id,
         customer_name,
-        customer_phone,
+        customer_phone: normalizedPhone,
         customer_email,
         date,
         start_time,
         end_time,
         status: business.auto_confirm_appointments ? 'confirmed' : 'pending',
         notes: notes || null,
+        customer_ip: clientIp,
+        device_fingerprint: deviceFingerprint,
       })
       .select()
       .single()

@@ -204,7 +204,13 @@ export default function AdminPage() {
         setProducts(productResult.data || [])
         setAvailability(availabilityResult.data || [])
 
-        if (appointmentResult.error || serviceResult.error || availabilityResult.error) {
+        if (
+            businessResult.error ||
+            appointmentResult.error ||
+            serviceResult.error ||
+            productResult.error ||
+            availabilityResult.error
+        ) {
             notify('No se pudieron cargar todos los datos', 'Revisa tu conexión o intenta nuevamente.', 'danger')
         }
     }
@@ -569,7 +575,10 @@ function WhatsAppNotifyModal({
             footer={
                 <ModalFooter
                     onCancel={onClose}
-                    onConfirm={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                    onConfirm={() => {
+                        window.open(url, '_blank', 'noopener,noreferrer')
+                        onClose()
+                    }}
                     confirmText="Abrir WhatsApp"
                 />
             }
@@ -951,7 +960,7 @@ function AppointmentsSection({
                             </AdminButton>
                         )}
 
-                        {appointment.status !== 'cancelled' && (
+                        {!['cancelled', 'completed'].includes(appointment.status) && (
                             <>
                                 <AdminButton onClick={() => onReschedule(appointment)}>
                                     Reagendar
@@ -963,7 +972,7 @@ function AppointmentsSection({
                             </>
                         )}
 
-                        {appointment.status !== 'cancelled' && (
+                        {!['cancelled', 'completed'].includes(appointment.status) && (
                             <AdminButton tone="danger" onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
                                 Cancelar
                             </AdminButton>
@@ -999,7 +1008,7 @@ function AppointmentsSection({
                                 </AdminButton>
                             )}
 
-                            {appointment.status !== 'cancelled' && (
+                            {!['cancelled', 'completed'].includes(appointment.status) && (
                                 <>
                                     <AdminButton full primary onClick={() => onReschedule(appointment)}>
                                         Reagendar
@@ -1011,7 +1020,7 @@ function AppointmentsSection({
                                 </>
                             )}
 
-                            {appointment.status !== 'cancelled' && (
+                            {!['cancelled', 'completed'].includes(appointment.status) && (
                                 <AdminButton tone="danger" full onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
                                     Cancelar
                                 </AdminButton>
@@ -1814,7 +1823,10 @@ function ScheduleSection({
             if (appointmentsInDay?.length) {
                 await supabase
                     .from('appointments')
-                    .update({ status: 'cancelled' })
+                    .update({
+                        status: 'cancelled',
+                        cancelled_at: new Date().toISOString(),
+                    })
                     .eq('date', newDayOff)
                     .in('status', ['pending', 'confirmed'])
             }
@@ -2427,6 +2439,12 @@ function RescheduleModal({
             return
         }
 
+        if (['cancelled', 'completed'].includes(appointment.status)) {
+            notify('Cita no modificable', 'No puedes reagendar una cita cancelada o completada.', 'danger')
+            onClose()
+            return
+        }
+
         onClose()
 
         askConfirm({
@@ -2759,7 +2777,10 @@ function BreakFormModal({
             if (form.is_active && appointmentsToCancel.length > 0) {
                 await supabase
                     .from('appointments')
-                    .update({ status: 'cancelled' })
+                    .update({
+                        status: 'cancelled',
+                        cancelled_at: new Date().toISOString(),
+                    })
                     .in('id', appointmentsToCancel.map((appointment) => appointment.id))
             }
 
