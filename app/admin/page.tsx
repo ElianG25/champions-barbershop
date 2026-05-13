@@ -2728,88 +2728,109 @@ function BreakFormModal({
     }
 
     async function saveBreak() {
-        if (!form.date || !form.name?.trim() || !form.start_time || !form.end_time) {
-            notify('Campos incompletos', 'Completa fecha, motivo y horario.', 'danger')
-            return
-        }
+    if (!form.date || !form.name?.trim() || !form.start_time || !form.end_time) {
+        notify('Campos incompletos', 'Completa fecha, motivo y horario.', 'danger')
+        return
+    }
 
-        if (form.start_time >= form.end_time) {
-            notify('Horario inválido', 'La hora de inicio debe ser menor que la hora final.', 'danger')
-            return
-        }
+    const startTime = String(form.start_time).slice(0, 5)
+    const endTime = String(form.end_time).slice(0, 5)
 
-        const { data: affectedAppointments } = await supabase
-            .from('appointments')
-            .select('*')
-            .eq('date', form.date)
-            .in('status', ['pending', 'confirmed'])
+    if (startTime >= endTime) {
+        notify('Horario inválido', 'La hora de inicio debe ser menor que la hora final.', 'danger')
+        return
+    }
 
-        const appointmentsToCancel = (affectedAppointments || []).filter((appointment) =>
-            rangesOverlap(
-                String(form.start_time).slice(0, 5),
-                String(form.end_time).slice(0, 5),
-                String(appointment.start_time).slice(0, 5),
-                String(appointment.end_time).slice(0, 5)
-            )
+    const { data: affectedAppointments, error: appointmentsError } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('date', form.date)
+        .in('status', ['pending', 'confirmed'])
+
+    if (appointmentsError) {
+        notify('No se pudieron validar las citas afectadas', 'Intenta nuevamente.', 'danger')
+        return
+    }
+
+    const appointmentsToCancel = (affectedAppointments || []).filter((appointment) =>
+        rangesOverlap(
+            startTime,
+            endTime,
+            String(appointment.start_time).slice(0, 5),
+            String(appointment.end_time).slice(0, 5)
         )
+    )
 
-        async function runSave() {
-            setSaving(true)
+    async function runSave() {
+        setSaving(true)
 
-            const payload = {
-                name: form.name.trim(),
-                date: form.date,
-                start_time: String(form.start_time).slice(0, 5),
-                end_time: String(form.end_time).slice(0, 5),
-                is_active: Boolean(form.is_active),
-            }
+        const payload = {
+            name: form.name.trim(),
+            date: form.date,
+            start_time: startTime,
+            end_time: endTime,
+            is_active: Boolean(form.is_active),
+        }
 
-            const { error } = isEditing
-                ? await supabase.from('breaks').update(payload).eq('id', form.id)
-                : await supabase.from('breaks').insert(payload)
+        const { error } = isEditing
+            ? await supabase.from('breaks').update(payload).eq('id', form.id)
+            : await supabase.from('breaks').insert(payload)
 
-            if (error) {
-                setSaving(false)
-                notify('No se pudo guardar el bloqueo', 'Intenta nuevamente.', 'danger')
-                return
-            }
-
-            if (form.is_active && appointmentsToCancel.length > 0) {
-                await supabase
-                    .from('appointments')
-                    .update({
-                        status: 'cancelled',
-                        cancelled_at: new Date().toISOString(),
-                    })
-                    .in('id', appointmentsToCancel.map((appointment) => appointment.id))
-            }
-
+        if (error) {
             setSaving(false)
-
-            notify(
-                isEditing ? 'Bloqueo actualizado' : 'Bloqueo creado',
-                appointmentsToCancel.length > 0
-                    ? 'Se guardó el bloqueo y se cancelaron las citas afectadas.'
-                    : 'Los cambios fueron guardados correctamente.',
-                'success'
-            )
-
-            await onSaved()
+            notify('No se pudo guardar el bloqueo', error.message, 'danger')
+            return
         }
 
         if (form.is_active && appointmentsToCancel.length > 0) {
-            askConfirm({
-                title: 'Bloqueo con citas existentes',
-                message: `Este bloqueo afecta ${appointmentsToCancel.length} cita(s). Si continúas, serán canceladas.`,
-                tone: 'danger',
-                onConfirm: runSave,
-            })
+            const { error: cancelError } = await supabase
+                .from('appointments')
+                .update({
+                    status: 'cancelled',
+                    cancelled_at: new Date().toISOString(),
+                })
+                .in('id', appointmentsToCancel.map((appointment) => appointment.id))
+                .in('status', ['pending', 'confirmed'])
 
-            return
+            if (cancelError) {
+                setSaving(false)
+                notify(
+                    'Bloqueo guardado, pero no se cancelaron las citas',
+                    cancelError.message,
+                    'danger'
+                )
+                return
+            }
         }
 
-        await runSave()
+        setSaving(false)
+
+        notify(
+            isEditing ? 'Bloqueo actualizado' : 'Bloqueo creado',
+            appointmentsToCancel.length > 0
+                ? 'Se guardó el bloqueo y se cancelaron las citas afectadas.'
+                : 'Los cambios fueron guardados correctamente.',
+            'success'
+        )
+
+        await onSaved()
     }
+
+    if (form.is_active && appointmentsToCancel.length > 0) {
+        onClose()
+
+        askConfirm({
+            title: 'Bloqueo con citas existentes',
+            message: `Este bloqueo afecta ${appointmentsToCancel.length} cita(s). Si continúas, serán canceladas.`,
+            tone: 'danger',
+            onConfirm: runSave,
+        })
+
+        return
+    }
+
+    await runSave()
+}
 
     return (
         <AdminModal
