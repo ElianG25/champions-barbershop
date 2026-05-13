@@ -203,6 +203,10 @@ export default function AdminPage() {
         setServices(serviceResult.data || [])
         setProducts(productResult.data || [])
         setAvailability(availabilityResult.data || [])
+
+        if (appointmentResult.error || serviceResult.error || availabilityResult.error) {
+            notify('No se pudieron cargar todos los datos', 'Revisa tu conexión o intenta nuevamente.', 'danger')
+        }
     }
 
     async function logout() {
@@ -253,6 +257,7 @@ export default function AdminPage() {
                     .from('appointments')
                     .update({ status })
                     .eq('id', id)
+                    .neq('status', 'cancelled')
 
                 if (error) {
                     notify('No se pudo actualizar la cita', 'Intenta nuevamente.', 'danger')
@@ -260,6 +265,9 @@ export default function AdminPage() {
                 }
 
                 await loadData()
+
+                setRescheduleAppointment(null)
+                setWhatsappAppointment(null)
 
                 notify(
                     'Cita actualizada',
@@ -532,20 +540,23 @@ function WhatsAppNotifyModal({
     business: any
     onClose: () => void
 }) {
+    const statusText: Record<string, string> = {
+        pending: 'Tu cita está pendiente de confirmación',
+        confirmed: 'Tu cita ha sido confirmada',
+        completed: 'Tu cita fue completada',
+    }
+
     const message = `✨ *¡Hola ${appointment.customer_name}!* ✨
 
-📅 *Tu cita ha sido confirmada*
+📅 *${statusText[appointment.status] || 'Actualización de tu cita'}*
 
 🏢 *Negocio:* ${business?.name || 'Champions Barbershop'}
 🗓️ *Fecha:* ${formatDate(appointment.date)}
-🕒 *Hora:* ${formatTime(
-        appointment.start_time,
-        business?.time_format || '24h'
-    )}
+🕒 *Hora:* ${formatTime(appointment.start_time, business?.time_format || '24h')}
 💇 *Servicio:* ${appointment.services?.name || 'Servicio'}
 
-✅ Te esperamos.  
-📲 Si necesitas realizar algún cambio, contáctanos con anticipación.`;
+✅ Te esperamos.
+📲 Si necesitas realizar algún cambio, contáctanos con anticipación.`
 
     const phone = String(appointment.customer_phone || '').replace(/\D/g, '')
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
@@ -940,13 +951,17 @@ function AppointmentsSection({
                             </AdminButton>
                         )}
 
-                        <AdminButton onClick={() => onReschedule(appointment)}>
-                            Reagendar
-                        </AdminButton>
+                        {appointment.status !== 'cancelled' && (
+                            <>
+                                <AdminButton onClick={() => onReschedule(appointment)}>
+                                    Reagendar
+                                </AdminButton>
 
-                        <AdminButton onClick={() => onNotify(appointment)}>
-                            WhatsApp
-                        </AdminButton>
+                                <AdminButton onClick={() => onNotify(appointment)}>
+                                    WhatsApp
+                                </AdminButton>
+                            </>
+                        )}
 
                         {appointment.status !== 'cancelled' && (
                             <AdminButton tone="danger" onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
@@ -984,13 +999,17 @@ function AppointmentsSection({
                                 </AdminButton>
                             )}
 
-                            <AdminButton full primary onClick={() => onReschedule(appointment)}>
-                                Reagendar
-                            </AdminButton>
+                            {appointment.status !== 'cancelled' && (
+                                <>
+                                    <AdminButton full primary onClick={() => onReschedule(appointment)}>
+                                        Reagendar
+                                    </AdminButton>
 
-                            <AdminButton full onClick={() => onNotify(appointment)}>
-                                Notificar por WhatsApp
-                            </AdminButton>
+                                    <AdminButton full onClick={() => onNotify(appointment)}>
+                                        Notificar por WhatsApp
+                                    </AdminButton>
+                                </>
+                            )}
 
                             {appointment.status !== 'cancelled' && (
                                 <AdminButton tone="danger" full onClick={() => updateAppointmentStatus(appointment.id, 'cancelled')}>
@@ -2408,6 +2427,8 @@ function RescheduleModal({
             return
         }
 
+        onClose()
+
         askConfirm({
             title: 'Reagendar cita',
             message: `¿Confirmas mover esta cita al ${formatDate(date)} a las ${formatTime(
@@ -2426,6 +2447,7 @@ function RescheduleModal({
                         end_time: addMinutes(selectedSlot, duration),
                     })
                     .eq('id', appointment.id)
+                    .neq('status', 'cancelled')
 
                 setSaving(false)
 
