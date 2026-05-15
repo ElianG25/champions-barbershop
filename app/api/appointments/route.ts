@@ -259,7 +259,6 @@ export async function POST(req: Request) {
 
 ✅ Hemos confirmado tu cita en *${businessNameText}* 💈
 
-👤 *Cliente:* ${customerNameText}
 💇🏼‍♂️ *Servicio:* ${serviceNameText}
 📅 *Fecha:* ${appointmentDateText}
 🕒 *Hora:* ${appointmentHourText}
