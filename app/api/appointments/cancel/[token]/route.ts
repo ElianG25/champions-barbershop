@@ -1,20 +1,21 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 function escapeHtml(value: string) {
-  return value
+  return String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 export async function POST(
-  req: Request,
-  { params }: { params: { token: string } }
+  req: NextRequest,
+  context: { params: Promise<{ token: string }> }
 ) {
   try {
-    const token = params.token
+    const { token } = await context.params
 
     if (!token) {
       return NextResponse.json(
@@ -60,22 +61,16 @@ export async function POST(
       )
     }
 
-    const customerName = escapeHtml(
-      appointment.customer_name || 'Cliente'
-    )
-
+    const customerName = escapeHtml(appointment.customer_name || 'Cliente')
     const customerPhone = escapeHtml(
       appointment.customer_phone || 'No especificado'
     )
-
     const serviceName = escapeHtml(
       appointment.services?.name || 'No especificado'
     )
-
     const appointmentDate = escapeHtml(
       appointment.date || 'No especificada'
     )
-
     const appointmentHour = escapeHtml(
       String(appointment.start_time || '').slice(0, 5)
     )
