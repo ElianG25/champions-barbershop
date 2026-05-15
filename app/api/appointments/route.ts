@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { getDayOfWeek, isPastDate, isPastSlot, rangesOverlap } from '@/lib/booking'
+import { sendTelegramMessage } from '@/lib/telegram'
 
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for')
@@ -237,6 +238,52 @@ export async function POST(req: Request) {
         { status: 400 }
       )
     }
+    function escapeHtml(value: string) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+    }
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
+    const cancelUrl = `${siteUrl}/cancelar-cita/${appointment.cancel_token}`
+
+    const customerNameText = customer_name || 'Cliente'
+    const businessNameText = business.name || 'el negocio'
+    const serviceNameText = service.name || 'servicio'
+    const appointmentDateText = date || 'fecha no especificada'
+    const appointmentHourText = String(start_time || '').slice(0, 5)
+    const phoneText = normalizedPhone || 'No especificado'
+
+    const clientMessage = `Hola, *${customerNameText}* 👋
+
+✅ Hemos confirmado tu cita en *${businessNameText}* 💈
+
+👤 *Cliente:* ${customerNameText}
+💇🏼‍♂️ *Servicio:* ${serviceNameText}
+📅 *Fecha:* ${appointmentDateText}
+🕒 *Hora:* ${appointmentHourText}
+
+Puedes ignorar este mensaje si confirmas tu asistencia.
+
+🚨 Si necesitas cancelar tu cita por alguna emergencia, visita este enlace:
+
+${cancelUrl}`
+
+    const whatsappLink = `https://wa.me/${phoneText}?text=${encodeURIComponent(clientMessage)}`
+
+    await sendTelegramMessage(
+      `<b>🆕 TIENES UNA NUEVA CITA</b>
+
+👤 <b>Cliente:</b> ${escapeHtml(customerNameText)}
+📞 <b>Teléfono:</b> ${escapeHtml(phoneText)}
+💈 <b>Servicio:</b> ${escapeHtml(serviceNameText)}
+📅 <b>Fecha:</b> ${escapeHtml(appointmentDateText)}
+🕒 <b>Hora:</b> ${escapeHtml(appointmentHourText)}
+
+📲 <b>Notificar por WhatsApp:</b>
+<a href="${escapeHtml(whatsappLink)}">Abrir mensaje listo para enviar</a>`
+    )
 
     return NextResponse.json(appointment)
   } catch (error) {
