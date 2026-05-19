@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { getDayOfWeek, isPastDate, isPastSlot, rangesOverlap } from '@/lib/booking'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { formatDate, formatTime } from '@/lib/utils'
 
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for')
@@ -251,8 +252,8 @@ export async function POST(req: Request) {
     const customerNameText = customer_name || 'Cliente'
     const businessNameText = business.name || 'el negocio'
     const serviceNameText = service.name || 'servicio'
-    const appointmentDateText = date || 'fecha no especificada'
-    const appointmentHourText = String(start_time || '').slice(0, 5)
+    const appointmentDateText = formatDate(date || 'fecha no especificada')
+    const appointmentHourText = formatTime(appointment.start_time || 'No especificada')
     const phoneText = normalizedPhone || 'No especificado'
 
     const clientMessage = `Hola, *${customerNameText}* 👋

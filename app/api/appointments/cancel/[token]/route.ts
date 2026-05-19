@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { sendTelegramMessage } from '@/lib/telegram'
+import { formatDate, formatTime } from '@/lib/utils'
 
 function escapeHtml(value: string) {
   return String(value || '')
@@ -118,8 +119,8 @@ export async function POST(
     const customerName = escapeHtml(appointment.customer_name || 'Cliente')
     const customerPhone = escapeHtml(appointment.customer_phone || 'No especificado')
     const serviceName = escapeHtml(appointment.services?.name || 'No especificado')
-    const appointmentDate = escapeHtml(appointment.date || 'No especificada')
-    const appointmentHour = escapeHtml(String(appointment.start_time || '').slice(0, 5))
+    const appointmentDate = formatDate(appointment.date || 'No especificada')
+    const appointmentHour = formatTime(appointment.start_time || 'No especificada')
 
     await sendTelegramMessage(
       `<b>❌ CITA CANCELADA</b>
