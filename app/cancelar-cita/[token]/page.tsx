@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { formatDate, formatTime } from '@/lib/utils'
 
 type Appointment = {
@@ -15,9 +15,64 @@ type Appointment = {
   } | null
 }
 
+const COPY = {
+  es: {
+    title: 'Cancelar cita',
+    cancelledTitle: 'Cita cancelada',
+    eyebrow: 'Gestión de reserva',
+    cancelledEyebrow: 'Cancelación confirmada',
+    description: 'Revisa los detalles de tu cita antes de confirmar la cancelación.',
+    cancelledDescription: 'Tu cita fue cancelada correctamente. El negocio ya fue notificado.',
+    loadError: 'No pudimos encontrar esta cita.',
+    fetchError: 'No pudimos cargar la información de la cita.',
+    invalidToken: 'Token inválido.',
+    cancelError: 'No se pudo cancelar la cita.',
+    unexpectedCancelError: 'Ocurrió un error cancelando la cita.',
+    details: 'Detalles de la cita',
+    customer: 'Cliente',
+    date: 'Fecha',
+    time: 'Hora',
+    service: 'Servicio',
+    fallbackCustomer: 'Cliente',
+    fallbackService: 'No especificado',
+    cancelling: 'Cancelando...',
+    cancelButton: 'Sí, cancelar mi cita',
+    slotReleased: 'Esta acción liberará el horario para otros clientes.',
+    alreadyCancelled: 'Esta cita ya figura como cancelada.',
+  },
+  en: {
+    title: 'Cancel appointment',
+    cancelledTitle: 'Appointment cancelled',
+    eyebrow: 'Booking management',
+    cancelledEyebrow: 'Cancellation confirmed',
+    description: 'Review your appointment details before confirming cancellation.',
+    cancelledDescription: 'Your appointment has been cancelled successfully. The business has already been notified.',
+    loadError: 'We could not find this appointment.',
+    fetchError: 'We could not load the appointment information.',
+    invalidToken: 'Invalid token.',
+    cancelError: 'We could not cancel this appointment.',
+    unexpectedCancelError: 'An error occurred while cancelling the appointment.',
+    details: 'Appointment details',
+    customer: 'Customer',
+    date: 'Date',
+    time: 'Time',
+    service: 'Service',
+    fallbackCustomer: 'Customer',
+    fallbackService: 'Not specified',
+    cancelling: 'Cancelling...',
+    cancelButton: 'Yes, cancel my appointment',
+    slotReleased: 'This action will free the time slot for other customers.',
+    alreadyCancelled: 'This appointment is already marked as cancelled.',
+  },
+} as const
+
 export default function CancelAppointmentPage() {
   const params = useParams()
   const token = String(params.token || '')
+  const searchParams = useSearchParams()
+  const language = searchParams.get('lang') === 'en' ? 'en' : 'es'
+  const t = COPY[language]
+  const langQuery = language === 'en' ? '?lang=en' : ''
 
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const [loading, setLoading] = useState(true)
@@ -29,7 +84,7 @@ export default function CancelAppointmentPage() {
     async function loadAppointment() {
       try {
         const res = await fetch(
-          `/api/appointments/cancel/${encodeURIComponent(token)}`,
+          `/api/appointments/cancel/${encodeURIComponent(token)}${langQuery}`,
           {
             method: 'GET',
             cache: 'no-store',
@@ -39,7 +94,7 @@ export default function CancelAppointmentPage() {
         const data = await res.json()
 
         if (!res.ok) {
-          setErrorMsg(data.error || 'No pudimos encontrar esta cita.')
+          setErrorMsg(data.error || t.loadError)
           return
         }
 
@@ -49,7 +104,7 @@ export default function CancelAppointmentPage() {
           setSuccess(true)
         }
       } catch {
-        setErrorMsg('No pudimos cargar la información de la cita.')
+        setErrorMsg(t.fetchError)
       } finally {
         setLoading(false)
       }
@@ -58,10 +113,10 @@ export default function CancelAppointmentPage() {
     if (token) {
       loadAppointment()
     } else {
-      setErrorMsg('Token inválido.')
+      setErrorMsg(t.invalidToken)
       setLoading(false)
     }
-  }, [token])
+  }, [token, langQuery, t.fetchError, t.invalidToken, t.loadError])
 
   async function handleCancel() {
     if (cancelling) return
@@ -71,7 +126,7 @@ export default function CancelAppointmentPage() {
 
     try {
       const res = await fetch(
-        `/api/appointments/cancel/${encodeURIComponent(token)}`,
+        `/api/appointments/cancel/${encodeURIComponent(token)}${langQuery}`,
         {
           method: 'POST',
         }
@@ -80,25 +135,23 @@ export default function CancelAppointmentPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setErrorMsg(data.error || 'No se pudo cancelar la cita.')
+        setErrorMsg(data.error || t.cancelError)
         return
       }
 
       setSuccess(true)
       setAppointment(data.appointment)
     } catch {
-      setErrorMsg('Ocurrió un error cancelando la cita.')
+      setErrorMsg(t.unexpectedCancelError)
     } finally {
       setCancelling(false)
     }
   }
 
-  const title = success ? 'Cita cancelada' : 'Cancelar cita'
-  const eyebrow = success ? 'Cancelación confirmada' : 'Gestión de reserva'
+  const title = success ? t.cancelledTitle : t.title
+  const eyebrow = success ? t.cancelledEyebrow : t.eyebrow
+  const description = success ? t.cancelledDescription : t.description
   const icon = success ? '✓' : '!'
-  const description = success
-    ? 'Tu cita fue cancelada correctamente. El negocio ya fue notificado.'
-    : 'Revisa los detalles de tu cita antes de confirmar la cancelación.'
 
   return (
     <main className="min-h-screen bg-[var(--app-bg)] px-5 py-10 text-[var(--app-text)]">
@@ -109,11 +162,10 @@ export default function CancelAppointmentPage() {
 
             <div className="relative">
               <div
-                className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full border text-4xl font-black ${
-                  success
-                    ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
-                    : 'border-red-400/30 bg-red-500/10 text-red-300'
-                }`}
+                className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full border text-4xl font-black ${success
+                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border-red-400/30 bg-red-500/10 text-red-300'
+                  }`}
               >
                 {icon}
               </div>
@@ -153,23 +205,23 @@ export default function CancelAppointmentPage() {
               <>
                 <div className="border border-white/10 bg-black/20 p-5 sm:p-6">
                   <p className="text-xs font-black uppercase tracking-[0.25em] text-[var(--app-muted)]">
-                    Detalles de la cita
+                    {t.details}
                   </p>
 
                   <div className="mt-5 grid gap-4 text-sm">
                     <div className="border-b border-white/10 pb-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                        Cliente
+                        {t.customer}
                       </p>
                       <p className="mt-1 text-lg font-bold">
-                        {appointment.customer_name || 'Cliente'}
+                        {appointment.customer_name || t.fallbackCustomer}
                       </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="border border-white/10 bg-white/[0.03] p-4">
                         <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                          Fecha
+                          {t.date}
                         </p>
                         <p className="mt-1 font-bold">
                           {formatDate(appointment.date)}
@@ -178,7 +230,7 @@ export default function CancelAppointmentPage() {
 
                       <div className="border border-white/10 bg-white/[0.03] p-4">
                         <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                          Hora
+                          {t.time}
                         </p>
                         <p className="mt-1 font-bold">
                           {formatTime(appointment.start_time)}
@@ -188,10 +240,10 @@ export default function CancelAppointmentPage() {
 
                     <div className="border border-white/10 bg-white/[0.03] p-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                        Servicio
+                        {t.service}
                       </p>
                       <p className="mt-1 font-bold">
-                        {appointment.services?.name || 'No especificado'}
+                        {appointment.services?.name || t.fallbackService}
                       </p>
                     </div>
                   </div>
@@ -210,11 +262,11 @@ export default function CancelAppointmentPage() {
                       disabled={cancelling}
                       className="w-full border border-red-400/40 bg-red-500 px-5 py-4 text-sm font-black uppercase tracking-[0.18em] text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {cancelling ? 'Cancelando...' : 'Sí, cancelar mi cita'}
+                      {cancelling ? t.cancelling : t.cancelButton}
                     </button>
 
                     <p className="text-center text-xs leading-5 text-[var(--app-muted)]">
-                      Esta acción liberará el horario para otros clientes.
+                      {t.slotReleased}
                     </p>
                   </div>
                 )}
@@ -222,7 +274,7 @@ export default function CancelAppointmentPage() {
                 {(success || appointment.status === 'cancelled') && (
                   <div className="mt-6 border border-emerald-400/25 bg-emerald-500/10 p-5 text-center">
                     <p className="text-sm font-semibold text-emerald-100">
-                      Esta cita ya figura como cancelada.
+                      {t.alreadyCancelled}
                     </p>
                   </div>
                 )}

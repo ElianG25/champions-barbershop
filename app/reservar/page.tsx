@@ -388,6 +388,7 @@ function ReservarContent() {
         start_time: selectedSlot,
         end_time: endTime,
         device_fingerprint: getDeviceFingerprint(),
+        language,
       }),
     })
 

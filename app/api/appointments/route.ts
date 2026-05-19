@@ -31,7 +31,10 @@ export async function POST(req: Request) {
       end_time,
       notes,
       device_fingerprint,
+      language,
     } = body
+
+    const bookingLanguage = language === 'en' ? 'en' : 'es'
 
     const normalizedPhone = String(customer_phone || '').replace(/\D/g, '')
 
@@ -247,7 +250,7 @@ export async function POST(req: Request) {
         .replace(/"/g, '&quot;')
     }
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
-    const cancelUrl = `${siteUrl}/cancelar-cita/${appointment.cancel_token}`
+    const cancelUrl = `${siteUrl}/cancelar-cita/${appointment.cancel_token}${bookingLanguage === 'en' ? '?lang=en' : ''}`
 
     const customerNameText = customer_name || 'Cliente'
     const businessNameText = business.name || 'el negocio'
@@ -256,7 +259,22 @@ export async function POST(req: Request) {
     const appointmentHourText = formatTime(appointment.start_time || 'No especificada')
     const phoneText = normalizedPhone || 'No especificado'
 
-    const clientMessage = `Hola, *${customerNameText}* 👋
+    const clientMessage =
+      bookingLanguage === 'en'
+        ? `Hi, *${customerNameText}* 👋
+
+✅ We have confirmed your appointment at *${businessNameText}* 💈
+
+💇🏼‍♂️ *Service:* ${serviceNameText}
+📅 *Date:* ${appointmentDateText}
+🕒 *Time:* ${appointmentHourText}
+
+You can ignore this message if you confirm your attendance.
+
+🚨 If you need to cancel your appointment due to an emergency, visit this link:
+
+${cancelUrl}`
+        : `Hola, *${customerNameText}* 👋
 
 ✅ Hemos confirmado tu cita en *${businessNameText}* 💈
 

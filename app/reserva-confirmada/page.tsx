@@ -46,7 +46,7 @@ function SuccessContent() {
       service: 'Servicio',
       date: 'Fecha',
       time: 'Hora',
-      note: 'Si necesitas cambiar o cancelar tu cita, contacta directamente con el negocio.',
+      note: 'En breve recibirás un mensaje de confirmación por WhatsApp. Si necesitas cancelar tu cita, hazlo desde el enlace de esta confirmación o contacta directamente al negocio.',
     },
     en: {
       badge: 'Booking confirmed',
@@ -60,7 +60,7 @@ function SuccessContent() {
       service: 'Service',
       date: 'Date',
       time: 'Time',
-      note: 'If you need to change or cancel your appointment, please contact the business directly.',
+      note: 'You will shortly receive a confirmation message via WhatsApp. If you need to cancel your appointment, do so from the link in this confirmation or contact the business directly.',
     },
   }
 
