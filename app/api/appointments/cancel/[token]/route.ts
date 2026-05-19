@@ -3,11 +3,51 @@ import { supabase } from '@/lib/supabaseClient'
 import { sendTelegramMessage } from '@/lib/telegram'
 
 function escapeHtml(value: string) {
-  return String(value)
+  return String(value || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ token: string }> }
+) {
+  const { token } = await context.params
+  const cleanToken = decodeURIComponent(token || '').trim()
+
+  if (!cleanToken || cleanToken === 'undefined' || cleanToken === 'null') {
+    return NextResponse.json(
+      { error: 'Token inválido.' },
+      { status: 400 }
+    )
+  }
+
+  const { data: appointment, error } = await supabase
+    .from('appointments')
+    .select(`
+      id,
+      customer_name,
+      customer_phone,
+      date,
+      start_time,
+      status,
+      services (
+        name
+      )
+    `)
+    .eq('cancel_token', cleanToken)
+    .maybeSingle()
+
+  if (error || !appointment) {
+    return NextResponse.json(
+      { error: 'La cita no existe o el enlace no es válido.' },
+      { status: 404 }
+    )
+  }
+
+  return NextResponse.json({ appointment })
 }
 
 export async function POST(
@@ -16,8 +56,9 @@ export async function POST(
 ) {
   try {
     const { token } = await context.params
+    const cleanToken = decodeURIComponent(token || '').trim()
 
-    if (!token) {
+    if (!cleanToken || cleanToken === 'undefined' || cleanToken === 'null') {
       return NextResponse.json(
         { error: 'Token inválido.' },
         { status: 400 }
@@ -32,14 +73,27 @@ export async function POST(
           name
         )
       `)
-      .eq('cancel_token', token)
-      .in('status', ['pending', 'confirmed'])
+      .eq('cancel_token', cleanToken)
       .maybeSingle()
 
     if (findError || !appointment) {
       return NextResponse.json(
-        { error: 'La cita no existe o ya fue cancelada.' },
+        { error: 'La cita no existe o el enlace no es válido.' },
         { status: 404 }
+      )
+    }
+
+    if (appointment.status === 'cancelled') {
+      return NextResponse.json(
+        { error: 'Esta cita ya fue cancelada anteriormente.' },
+        { status: 409 }
+      )
+    }
+
+    if (!['pending', 'confirmed'].includes(appointment.status)) {
+      return NextResponse.json(
+        { error: 'Esta cita ya no puede ser cancelada.' },
+        { status: 409 }
       )
     }
 
@@ -62,18 +116,10 @@ export async function POST(
     }
 
     const customerName = escapeHtml(appointment.customer_name || 'Cliente')
-    const customerPhone = escapeHtml(
-      appointment.customer_phone || 'No especificado'
-    )
-    const serviceName = escapeHtml(
-      appointment.services?.name || 'No especificado'
-    )
-    const appointmentDate = escapeHtml(
-      appointment.date || 'No especificada'
-    )
-    const appointmentHour = escapeHtml(
-      String(appointment.start_time || '').slice(0, 5)
-    )
+    const customerPhone = escapeHtml(appointment.customer_phone || 'No especificado')
+    const serviceName = escapeHtml(appointment.services?.name || 'No especificado')
+    const appointmentDate = escapeHtml(appointment.date || 'No especificada')
+    const appointmentHour = escapeHtml(String(appointment.start_time || '').slice(0, 5))
 
     await sendTelegramMessage(
       `<b>❌ CITA CANCELADA</b>
