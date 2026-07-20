@@ -13,6 +13,9 @@ type Appointment = {
   services?: {
     name?: string
   } | null
+  staff?: {
+    full_name?: string
+  } | null
 }
 
 const COPY = {
@@ -33,6 +36,7 @@ const COPY = {
     date: 'Fecha',
     time: 'Hora',
     service: 'Servicio',
+    barber: 'Barbero',
     fallbackCustomer: 'Cliente',
     fallbackService: 'No especificado',
     cancelling: 'Cancelando...',
@@ -57,6 +61,7 @@ const COPY = {
     date: 'Date',
     time: 'Time',
     service: 'Service',
+    barber: 'Barber',
     fallbackCustomer: 'Customer',
     fallbackService: 'Not specified',
     cancelling: 'Cancelling...',
@@ -162,6 +167,7 @@ export default function CancelAppointmentPage() {
 
             <div className="relative">
               <div
+                aria-hidden="true"
                 className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full border text-4xl font-black ${success
                   ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
                   : 'border-red-400/30 bg-red-500/10 text-red-300'
@@ -224,7 +230,7 @@ export default function CancelAppointmentPage() {
                           {t.date}
                         </p>
                         <p className="mt-1 font-bold">
-                          {formatDate(appointment.date)}
+                          {formatDate(appointment.date, language)}
                         </p>
                       </div>
 
@@ -246,6 +252,17 @@ export default function CancelAppointmentPage() {
                         {appointment.services?.name || t.fallbackService}
                       </p>
                     </div>
+
+                    {appointment.staff?.full_name && (
+                      <div className="border border-white/10 bg-white/[0.03] p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
+                          {t.barber}
+                        </p>
+                        <p className="mt-1 font-bold">
+                          {appointment.staff.full_name}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

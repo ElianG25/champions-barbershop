@@ -1,25 +1,37 @@
 'use client'
 
 import { formatDate } from '@/lib/utils'
+import { DEFAULT_TIMEZONE, getZonedToday } from '@/lib/booking'
 
 type DateSelectorProps = {
   value: string
   onChange: (value: string) => void
   days?: number
+  timeZone?: string
+  language?: 'es' | 'en'
 }
 
-export function DateSelector({ value, onChange, days = 14 }: DateSelectorProps) {
+export function DateSelector({
+  value,
+  onChange,
+  days = 14,
+  timeZone = DEFAULT_TIMEZONE,
+  language = 'es',
+}: DateSelectorProps) {
+  const locale = language === 'en' ? 'en-US' : 'es-ES'
+  const todayStr = getZonedToday(timeZone)
+
   const dates = Array.from({ length: days }).map((_, index) => {
-    const date = new Date()
+    const date = new Date(`${todayStr}T00:00:00`)
     date.setDate(date.getDate() + index)
 
-    const iso = date.toISOString().split('T')[0]
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
     return {
       iso,
-      day: date.toLocaleDateString('es-ES', { weekday: 'short' }),
+      day: date.toLocaleDateString(locale, { weekday: 'short' }),
       number: date.getDate(),
-      month: date.toLocaleDateString('es-ES', { month: 'short' }),
+      month: date.toLocaleDateString(locale, { month: 'short' }),
     }
   })
 
@@ -56,7 +68,7 @@ export function DateSelector({ value, onChange, days = 14 }: DateSelectorProps) 
 
       {value && (
         <p className="mt-3 text-sm text-[var(--app-muted)]">
-          Fecha seleccionada: {formatDate(value)}
+          {language === 'en' ? 'Selected date:' : 'Fecha seleccionada:'} {formatDate(value, language)}
         </p>
       )}
     </div>

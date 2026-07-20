@@ -6,7 +6,10 @@ import { supabase } from '@/lib/supabaseClient'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import {
     addMinutes,
+    DEFAULT_TIMEZONE,
     getDayOfWeek,
+    getZonedNow,
+    getZonedToday,
     isPastDate,
     rangesOverlap,
 } from '@/lib/booking'
@@ -92,8 +95,8 @@ const SECTION_TITLES: Record<Section, string> = {
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const WEEK_DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados', 'domingos']
 
-function getTimeGreeting() {
-    const hour = new Date().getHours()
+function getTimeGreeting(timeZone: string = DEFAULT_TIMEZONE) {
+    const hour = getZonedNow(timeZone).getHours()
 
     if (hour < 12) return 'Buenos días'
     if (hour < 19) return 'Buenas tardes'
@@ -388,11 +391,11 @@ export default function AdminPage() {
     }
 
     const stats = useMemo(() => {
-        const today = new Date()
+        const todayStr = getZonedToday(business?.timezone || DEFAULT_TIMEZONE)
+        const today = new Date(`${todayStr}T00:00:00`)
 
-        const toISODate = (date: Date) => date.toISOString().split('T')[0]
-
-        const todayStr = toISODate(today)
+        const toISODate = (date: Date) =>
+            `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
         const yesterday = new Date(today)
         yesterday.setDate(today.getDate() - 1)
@@ -444,10 +447,10 @@ export default function AdminPage() {
             revenue15Days,
             revenueMonth,
         }
-    }, [appointments, services.length])
+    }, [appointments, services.length, business?.timezone])
 
     const workerStats = useMemo(() => {
-        const todayStr = new Date().toISOString().split('T')[0]
+        const todayStr = getZonedToday(business?.timezone || DEFAULT_TIMEZONE)
 
         return staffList
             .filter((staff) => staff.is_worker)
@@ -469,19 +472,22 @@ export default function AdminPage() {
 
                 return { worker: staff, todayCount, revenueToday }
             })
-    }, [appointments, staffList])
+    }, [appointments, staffList, business?.timezone])
 
     function getFilteredAppointments() {
-        const today = new Date()
-        const todayStr = today.toISOString().split('T')[0]
+        const toISODate = (date: Date) =>
+            `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+        const todayStr = getZonedToday(business?.timezone || DEFAULT_TIMEZONE)
+        const today = new Date(`${todayStr}T00:00:00`)
 
         const tomorrow = new Date(today)
         tomorrow.setDate(today.getDate() + 1)
-        const tomorrowStr = tomorrow.toISOString().split('T')[0]
+        const tomorrowStr = toISODate(tomorrow)
 
         const weekEnd = new Date(today)
         weekEnd.setDate(today.getDate() + 7)
-        const weekEndStr = weekEnd.toISOString().split('T')[0]
+        const weekEndStr = toISODate(weekEnd)
 
         return appointments.filter((appointment) => {
             if (appointmentWorkerFilter !== 'all' && appointment.worker_id !== appointmentWorkerFilter) {
@@ -765,13 +771,13 @@ function CalendarAppointmentsModal({
     business: any
     onClose: () => void
 }) {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getZonedToday(business?.timezone || DEFAULT_TIMEZONE)
     const [selectedDate, setSelectedDate] = useState(today)
 
     const days = Array.from({ length: 14 }).map((_, index) => {
-        const date = new Date()
+        const date = new Date(`${today}T00:00:00`)
         date.setDate(date.getDate() + index)
-        return date.toISOString().split('T')[0]
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     })
 
     const dayAppointments = appointments.filter((appointment) => appointment.date === selectedDate)
@@ -853,7 +859,7 @@ function HomeSection({
     isAdmin: boolean
     firstName: string
 }) {
-    const greeting = `${getTimeGreeting()}${firstName ? `, ${firstName}` : ''}.`
+    const greeting = `${getTimeGreeting(business?.timezone || DEFAULT_TIMEZONE)}${firstName ? `, ${firstName}` : ''}.`
 
     return (
         <section className="animate-fade-in">
@@ -2059,8 +2065,10 @@ function ScheduleSection({
     const breakGroups = groupBreaks(breaks)
 
     async function loadAvailabilityExtras() {
-        const today = new Date().toISOString().split('T')[0]
-        const now = new Date().toTimeString().slice(0, 5)
+        const timeZone = business?.timezone || DEFAULT_TIMEZONE
+        const today = getZonedToday(timeZone)
+        const zonedNow = getZonedNow(timeZone)
+        const now = `${String(zonedNow.getHours()).padStart(2, '0')}:${String(zonedNow.getMinutes()).padStart(2, '0')}`
 
         await supabase
             .from('breaks')
@@ -3303,7 +3311,9 @@ function RescheduleModal({
         setSlots([])
         setSelectedSlot('')
 
-        if (isPastDate(date)) {
+        const timeZone = business?.timezone || DEFAULT_TIMEZONE
+
+        if (isPastDate(date, timeZone)) {
             setMessage('No puedes reagendar a una fecha pasada.')
             setLoadingSlots(false)
             return
@@ -3315,7 +3325,7 @@ function RescheduleModal({
             return
         }
 
-        const result = await getAvailableSlots(date, duration, appointment.worker_id, appointment.id)
+        const result = await getAvailableSlots(date, duration, appointment.worker_id, appointment.id, timeZone)
 
         switch (result.status) {
             case 'invalid-duration':
@@ -3406,7 +3416,12 @@ function RescheduleModal({
             </p>
 
             <FieldLabel label="Nueva fecha">
-                <DateSelector value={date} onChange={setDate} days={30} />
+                <DateSelector
+                    value={date}
+                    onChange={setDate}
+                    days={30}
+                    timeZone={business?.timezone || DEFAULT_TIMEZONE}
+                />
             </FieldLabel>
 
             <div className="mt-6">
@@ -3635,7 +3650,7 @@ function BreakFormModal({
     )
     const [name, setName] = useState(item?.name || 'Descanso')
     const [date, setDate] = useState(
-        item?.kind === 'single' ? item.date : new Date().toISOString().split('T')[0]
+        item?.kind === 'single' ? item.date : getZonedToday(business?.timezone || DEFAULT_TIMEZONE)
     )
     const [selectedDays, setSelectedDays] = useState<number[]>(
         item?.kind === 'recurring' ? item.days : []
@@ -3683,7 +3698,7 @@ function BreakFormModal({
         affectedQuery =
             breakType === 'single'
                 ? affectedQuery.eq('date', date)
-                : affectedQuery.gte('date', new Date().toISOString().split('T')[0])
+                : affectedQuery.gte('date', getZonedToday(business?.timezone || DEFAULT_TIMEZONE))
 
         const { data: candidateAppointments, error: appointmentsError } = await affectedQuery
 
@@ -3867,7 +3882,12 @@ function BreakFormModal({
             <div className="space-y-6">
                 {breakType === 'single' ? (
                     <FieldLabel label="Fecha">
-                        <DateSelector value={date} onChange={setDate} days={30} />
+                        <DateSelector
+                    value={date}
+                    onChange={setDate}
+                    days={30}
+                    timeZone={business?.timezone || DEFAULT_TIMEZONE}
+                />
                     </FieldLabel>
                 ) : (
                     <FieldLabel label="Días de la semana">

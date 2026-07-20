@@ -36,6 +36,9 @@ export async function GET(
       status,
       services (
         name
+      ),
+      staff (
+        full_name
       )
     `)
     .eq('cancel_token', cleanToken)

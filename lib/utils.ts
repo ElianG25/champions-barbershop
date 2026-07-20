@@ -23,8 +23,8 @@ export function formatTime(time: string, format: '12h' | '24h' = '24h') {
   return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`
 }
 
-export function formatDate(date: string) {
-  return new Intl.DateTimeFormat('es-ES', {
+export function formatDate(date: string, language: 'es' | 'en' = 'es') {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'es-ES', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

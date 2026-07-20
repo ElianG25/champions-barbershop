@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
-import { addMinutes, isPastDate } from '@/lib/booking'
+import { addMinutes, DEFAULT_TIMEZONE, isPastDate } from '@/lib/booking'
 import { getAvailableSlots } from '@/lib/availability'
 import { buildThemeStyle } from '@/lib/theme'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
@@ -269,9 +269,11 @@ function ReservarContent() {
 
     setLoadingAlternatives(true)
 
+    const timeZone = business?.timezone || DEFAULT_TIMEZONE
+
     const results = await Promise.all(
       otherWorkers.map(async (worker) => {
-        const result = await getAvailableSlots(date, duration, worker.id)
+        const result = await getAvailableSlots(date, duration, worker.id, undefined, timeZone)
         return { workerId: worker.id, available: result.status === 'ok' && result.slots.length > 0 }
       })
     )
@@ -289,14 +291,16 @@ function ReservarContent() {
     setSelectedSlot('')
     setAvailableWorkerIds([])
 
-    if (isPastDate(date)) {
+    const timeZone = business?.timezone || DEFAULT_TIMEZONE
+
+    if (isPastDate(date, timeZone)) {
       setMessage(t.pastDate)
       setLoadingSlots(false)
       return
     }
 
     const duration = Number(selectedService.duration_minutes)
-    const result = await getAvailableSlots(date, duration, selectedWorker.id)
+    const result = await getAvailableSlots(date, duration, selectedWorker.id, undefined, timeZone)
 
     switch (result.status) {
       case 'invalid-duration':
@@ -392,6 +396,7 @@ function ReservarContent() {
     const params = new URLSearchParams({
       name: customerName,
       service: serviceName(selectedService),
+      worker: selectedWorker.full_name,
       date,
       time: selectedSlot,
     })
@@ -490,7 +495,7 @@ function ReservarContent() {
               <SummaryRow label={t.customer} value={customerName || t.pending} />
               <SummaryRow
                 label={t.date}
-                value={date ? formatDate(date) : t.pending}
+                value={date ? formatDate(date, language) : t.pending}
               />
               <SummaryRow
                 label={t.time}
@@ -631,7 +636,13 @@ function ReservarContent() {
             onOpen={() => selectedService && selectedWorker && customerName && customerPhone && setActiveStep('date')}
             completedText={t.selected}
           >
-            <DateSelector value={date} onChange={selectDate} days={21} />
+            <DateSelector
+              value={date}
+              onChange={selectDate}
+              days={21}
+              timeZone={business?.timezone || DEFAULT_TIMEZONE}
+              language={language}
+            />
           </AccordionPanel>
 
           <AccordionPanel
@@ -879,7 +890,7 @@ function ConfirmModal({
           <ModalRow label={t.phone} value={phone} />
           <ModalRow label={t.service} value={serviceName} />
           <ModalRow label={t.barber} value={workerName} />
-          <ModalRow label={t.date} value={date ? formatDate(date) : '—'} />
+          <ModalRow label={t.date} value={date ? formatDate(date, language) : '—'} />
           <ModalRow
             label={t.time}
             value={formatTime(time, business?.time_format || '24h')}

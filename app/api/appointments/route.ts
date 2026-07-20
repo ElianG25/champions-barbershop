@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
-import { isPastDate, isPastSlot } from '@/lib/booking'
+import { DEFAULT_TIMEZONE, getZonedToday, isPastDate, isPastSlot } from '@/lib/booking'
 import { getAvailableSlots } from '@/lib/availability'
 import { sendTelegramMessage } from '@/lib/telegram'
 import { formatDate, formatTime } from '@/lib/utils'
@@ -60,13 +60,6 @@ export async function POST(req: Request) {
       )
     }
 
-    if (isPastDate(date) || isPastSlot(date, start_time)) {
-      return NextResponse.json(
-        { error: 'No puedes reservar una fecha u hora pasada.' },
-        { status: 400 }
-      )
-    }
-
     const { data: business } = await supabase
       .from('business_settings')
       .select('*')
@@ -75,6 +68,15 @@ export async function POST(req: Request) {
     if (!business?.booking_enabled) {
       return NextResponse.json(
         { error: 'Las reservas no están disponibles ahora mismo.' },
+        { status: 400 }
+      )
+    }
+
+    const timeZone = business.timezone || DEFAULT_TIMEZONE
+
+    if (isPastDate(date, timeZone) || isPastSlot(date, start_time, timeZone)) {
+      return NextResponse.json(
+        { error: 'No puedes reservar una fecha u hora pasada.' },
         { status: 400 }
       )
     }
@@ -108,7 +110,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const slotsResult = await getAvailableSlots(date, service.duration_minutes, worker_id)
+    const slotsResult = await getAvailableSlots(date, service.duration_minutes, worker_id, undefined, timeZone)
 
     if (slotsResult.status !== 'ok' || !slotsResult.slots.includes(start_time)) {
       return NextResponse.json(
@@ -117,7 +119,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getZonedToday(timeZone)
 
     const { data: recentBookings, error: recentBookingsError } = await supabase
       .from('appointments')

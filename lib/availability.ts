@@ -1,5 +1,12 @@
 import { supabase } from '@/lib/supabaseClient'
-import { addMinutes, generateSlots, getDayOfWeek, isPastSlot, rangesOverlap } from '@/lib/booking'
+import {
+  addMinutes,
+  DEFAULT_TIMEZONE,
+  generateSlots,
+  getDayOfWeek,
+  isPastSlot,
+  rangesOverlap,
+} from '@/lib/booking'
 import type { AvailabilityRule, Break, Appointment, DayOff } from '@/types/database'
 
 export type SlotsResult =
@@ -13,7 +20,8 @@ export async function getAvailableSlots(
   date: string,
   durationMinutes: number,
   workerId: string,
-  excludeAppointmentId?: string
+  excludeAppointmentId?: string,
+  timeZone: string = DEFAULT_TIMEZONE
 ): Promise<SlotsResult> {
   if (!durationMinutes || durationMinutes <= 0) {
     return { status: 'invalid-duration' }
@@ -86,7 +94,7 @@ export async function getAvailableSlots(
   }
 
   const available = allSlots.filter((slot) => {
-    if (isPastSlot(date, slot)) return false
+    if (isPastSlot(date, slot, timeZone)) return false
 
     const slotEnd = addMinutes(slot, durationMinutes)
 

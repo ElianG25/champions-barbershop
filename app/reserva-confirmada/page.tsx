@@ -44,6 +44,7 @@ function SuccessContent() {
       waiting: 'te espera en la fecha y hora seleccionada.',
       customer: 'Cliente',
       service: 'Servicio',
+      barber: 'Barbero',
       date: 'Fecha',
       time: 'Hora',
       note: 'En breve recibirás un mensaje de confirmación por WhatsApp. Si necesitas cancelar tu cita, hazlo desde el enlace de esta confirmación o contacta directamente al negocio.',
@@ -58,6 +59,7 @@ function SuccessContent() {
       waiting: 'is expecting you at the selected date and time.',
       customer: 'Customer',
       service: 'Service',
+      barber: 'Barber',
       date: 'Date',
       time: 'Time',
       note: 'You will shortly receive a confirmation message via WhatsApp. If you need to cancel your appointment, do so from the link in this confirmation or contact the business directly.',
@@ -91,6 +93,7 @@ function SuccessContent() {
 
   const name = params.get('name')
   const service = params.get('service')
+  const worker = params.get('worker')
   const date = params.get('date')
   const time = params.get('time')
 
@@ -147,7 +150,8 @@ function SuccessContent() {
           <div className="mt-6 divide-y divide-white/10 border border-white/10">
             <InfoRow label={t.customer} value={name || '—'} />
             <InfoRow label={t.service} value={service || '—'} />
-            <InfoRow label={t.date} value={date ? formatDate(date) : '—'} />
+            {worker && <InfoRow label={t.barber} value={worker} />}
+            <InfoRow label={t.date} value={date ? formatDate(date, language) : '—'} />
             <InfoRow
               label={t.time}
               value={time ? formatTime(time, business?.time_format || '24h') : '—'}
