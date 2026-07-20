@@ -23,6 +23,14 @@ export function formatTime(time: string, format: '12h' | '24h' = '24h') {
   return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`
 }
 
+export function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 export function formatDate(date: string, language: 'es' | 'en' = 'es') {
   return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'es-ES', {
     weekday: 'long',

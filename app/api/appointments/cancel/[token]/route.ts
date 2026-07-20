@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { sendTelegramMessage } from '@/lib/telegram'
-import { formatDate, formatTime } from '@/lib/utils'
-
-function escapeHtml(value: string) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+import { escapeHtml, formatDate, formatTime } from '@/lib/utils'
 
 export async function GET(
   req: NextRequest,

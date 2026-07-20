@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { DEFAULT_TIMEZONE, getZonedToday, isPastDate, isPastSlot } from '@/lib/booking'
 import { getAvailableSlots } from '@/lib/availability'
 import { sendTelegramMessage } from '@/lib/telegram'
-import { formatDate, formatTime } from '@/lib/utils'
+import { escapeHtml, formatDate, formatTime } from '@/lib/utils'
 
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for')
@@ -185,13 +185,6 @@ export async function POST(req: Request) {
         { error: 'No se pudo crear la reserva. Intenta nuevamente.' },
         { status: 400 }
       )
-    }
-    function escapeHtml(value: string) {
-      return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
     }
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
     const cancelUrl = `${siteUrl}/cancelar-cita/${appointment.cancel_token}${bookingLanguage === 'en' ? '?lang=en' : ''}`

@@ -2207,6 +2207,15 @@ function ScheduleSection({
                 }
 
                 await cancelQuery
+
+                fetch('/api/appointments/notify-cancellation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        appointmentIds: appointmentsInDay.map((appointment: any) => appointment.id),
+                        reason: newDayOffReason.trim(),
+                    }),
+                }).catch(() => {})
             }
 
             setLoading(false)
@@ -3799,6 +3808,15 @@ function BreakFormModal({
                     )
                     return
                 }
+
+                fetch('/api/appointments/notify-cancellation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        appointmentIds: appointmentsToCancel.map((appointment) => appointment.id),
+                        reason: name.trim(),
+                    }),
+                }).catch(() => {})
             }
 
             setSaving(false)
