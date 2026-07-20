@@ -1,8 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { formatDate, formatTime } from '@/lib/utils'
+import { buildThemeStyle } from '@/lib/theme'
+import { supabase } from '@/lib/supabaseClient'
+import { NeutralLoader } from '@/components/ui/NeutralLoader'
 
 type Appointment = {
   customer_name: string
@@ -43,6 +48,7 @@ const COPY = {
     cancelButton: 'Sí, cancelar mi cita',
     slotReleased: 'Esta acción liberará el horario para otros clientes.',
     alreadyCancelled: 'Esta cita ya figura como cancelada.',
+    home: 'Volver al inicio',
   },
   en: {
     title: 'Cancel appointment',
@@ -68,6 +74,7 @@ const COPY = {
     cancelButton: 'Yes, cancel my appointment',
     slotReleased: 'This action will free the time slot for other customers.',
     alreadyCancelled: 'This appointment is already marked as cancelled.',
+    home: 'Back home',
   },
 } as const
 
@@ -84,6 +91,22 @@ export default function CancelAppointmentPage() {
   const [cancelling, setCancelling] = useState(false)
   const [success, setSuccess] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [business, setBusiness] = useState<any>(null)
+  const [loadingBusiness, setLoadingBusiness] = useState(true)
+
+  useEffect(() => {
+    async function loadBusiness() {
+      const { data } = await supabase
+        .from('business_settings')
+        .select('*')
+        .single()
+
+      setBusiness(data)
+      setLoadingBusiness(false)
+    }
+
+    loadBusiness()
+  }, [])
 
   useEffect(() => {
     async function loadAppointment() {
@@ -153,41 +176,64 @@ export default function CancelAppointmentPage() {
     }
   }
 
+  if (loadingBusiness || !business) {
+    return (
+      <NeutralLoader
+        eyebrow={language === 'en' ? 'Booking management' : 'Gestión de reserva'}
+        title={language === 'en' ? 'Loading appointment...' : 'Cargando cita...'}
+      />
+    )
+  }
+
   const title = success ? t.cancelledTitle : t.title
   const eyebrow = success ? t.cancelledEyebrow : t.eyebrow
   const description = success ? t.cancelledDescription : t.description
-  const icon = success ? '✓' : '!'
+  const isCancelled = success || appointment?.status === 'cancelled'
+  const StatusIcon = isCancelled ? CheckCircle2 : errorMsg && !appointment ? XCircle : AlertTriangle
 
   return (
-    <main className="min-h-screen bg-[var(--app-bg)] px-5 py-10 text-[var(--app-text)]">
-      <section className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-2xl items-center justify-center">
-        <div className="w-full overflow-hidden border border-white/10 bg-[var(--app-surface)] shadow-2xl shadow-black/40">
-          <div className="relative overflow-hidden border-b border-white/10 px-6 py-10 text-center sm:px-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,var(--brand)_0%,transparent_35%)] opacity-20" />
+    <main
+      style={buildThemeStyle(business)}
+      className="min-h-screen overflow-x-hidden bg-[var(--app-bg)] text-[var(--app-text)]"
+    >
+      <header className="border-b border-white/10">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
+          <Link href="/" className="text-sm font-semibold tracking-wide">
+            {business?.name || 'Champions Barbershop'}
+          </Link>
 
-            <div className="relative">
-              <div
-                aria-hidden="true"
-                className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full border text-4xl font-black ${success
-                  ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
-                  : 'border-red-400/30 bg-red-500/10 text-red-300'
-                  }`}
-              >
-                {icon}
-              </div>
+          <Link
+            href={`/${langQuery}`}
+            className="border border-white/15 px-4 py-2 text-sm font-semibold text-[var(--app-muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+          >
+            {t.home}
+          </Link>
+        </div>
+      </header>
 
-              <p className="mt-6 text-xs font-black uppercase tracking-[0.28em] text-[var(--brand)]">
-                {eyebrow}
-              </p>
-
-              <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-                {title}
-              </h1>
-
-              <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[var(--app-muted)]">
-                {description}
-              </p>
+      <section className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-2xl items-center justify-center px-5 py-10">
+        <div className="w-full animate-fade-in border border-white/10 bg-[var(--app-surface)] shadow-2xl">
+          <div className="border-b border-white/10 px-6 py-10 text-center sm:px-10">
+            <div
+              className={`mx-auto flex h-14 w-14 items-center justify-center border ${isCancelled
+                ? 'border-[var(--brand)] text-[var(--brand)]'
+                : 'border-red-400/30 text-red-300'
+                }`}
+            >
+              <StatusIcon size={24} />
             </div>
+
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
+              {eyebrow}
+            </p>
+
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
+              {title}
+            </h1>
+
+            <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[var(--app-muted)]">
+              {description}
+            </p>
           </div>
 
           <div className="p-6 sm:p-8">
@@ -200,8 +246,8 @@ export default function CancelAppointmentPage() {
             )}
 
             {!loading && errorMsg && !appointment && (
-              <div className="border border-red-400/25 bg-red-500/10 p-5 text-center">
-                <p className="text-sm font-semibold text-red-100">
+              <div className="border border-red-500/30 bg-red-500/10 p-5 text-center">
+                <p className="text-sm font-semibold text-red-200">
                   {errorMsg}
                 </p>
               </div>
@@ -209,8 +255,8 @@ export default function CancelAppointmentPage() {
 
             {!loading && appointment && (
               <>
-                <div className="border border-white/10 bg-black/20 p-5 sm:p-6">
-                  <p className="text-xs font-black uppercase tracking-[0.25em] text-[var(--app-muted)]">
+                <div className="border border-white/10 bg-[var(--app-bg)]/40 p-5 sm:p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--app-muted)]">
                     {t.details}
                   </p>
 
@@ -219,7 +265,7 @@ export default function CancelAppointmentPage() {
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
                         {t.customer}
                       </p>
-                      <p className="mt-1 text-lg font-bold">
+                      <p className="mt-1 text-lg font-semibold">
                         {appointment.customer_name || t.fallbackCustomer}
                       </p>
                     </div>
@@ -229,7 +275,7 @@ export default function CancelAppointmentPage() {
                         <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
                           {t.date}
                         </p>
-                        <p className="mt-1 font-bold">
+                        <p className="mt-1 font-semibold">
                           {formatDate(appointment.date, language)}
                         </p>
                       </div>
@@ -238,8 +284,8 @@ export default function CancelAppointmentPage() {
                         <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
                           {t.time}
                         </p>
-                        <p className="mt-1 font-bold">
-                          {formatTime(appointment.start_time)}
+                        <p className="mt-1 font-semibold">
+                          {formatTime(appointment.start_time, business?.time_format || '24h')}
                         </p>
                       </div>
                     </div>
@@ -248,7 +294,7 @@ export default function CancelAppointmentPage() {
                       <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
                         {t.service}
                       </p>
-                      <p className="mt-1 font-bold">
+                      <p className="mt-1 font-semibold">
                         {appointment.services?.name || t.fallbackService}
                       </p>
                     </div>
@@ -258,7 +304,7 @@ export default function CancelAppointmentPage() {
                         <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
                           {t.barber}
                         </p>
-                        <p className="mt-1 font-bold">
+                        <p className="mt-1 font-semibold">
                           {appointment.staff.full_name}
                         </p>
                       </div>
@@ -267,7 +313,7 @@ export default function CancelAppointmentPage() {
                 </div>
 
                 {errorMsg && (
-                  <div className="mt-5 border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-100">
+                  <div className="mt-5 border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
                     {errorMsg}
                   </div>
                 )}
@@ -277,7 +323,7 @@ export default function CancelAppointmentPage() {
                     <button
                       onClick={handleCancel}
                       disabled={cancelling}
-                      className="w-full border border-red-400/40 bg-red-500 px-5 py-4 text-sm font-black uppercase tracking-[0.18em] text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="btn-danger w-full disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {cancelling ? t.cancelling : t.cancelButton}
                     </button>
@@ -289,10 +335,16 @@ export default function CancelAppointmentPage() {
                 )}
 
                 {(success || appointment.status === 'cancelled') && (
-                  <div className="mt-6 border border-emerald-400/25 bg-emerald-500/10 p-5 text-center">
-                    <p className="text-sm font-semibold text-emerald-100">
-                      {t.alreadyCancelled}
-                    </p>
+                  <div className="mt-6 space-y-3">
+                    <div className="border border-emerald-400/25 bg-emerald-400/10 p-5 text-center">
+                      <p className="text-sm font-semibold text-emerald-300">
+                        {t.alreadyCancelled}
+                      </p>
+                    </div>
+
+                    <Link href={`/${langQuery}`} className="btn-secondary block w-full text-center">
+                      {t.home}
+                    </Link>
                   </div>
                 )}
               </>
