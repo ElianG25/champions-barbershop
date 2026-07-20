@@ -90,6 +90,14 @@ const SECTION_TITLES: Record<Section, string> = {
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
+function getTimeGreeting() {
+    const hour = new Date().getHours()
+
+    if (hour < 12) return 'Buenos días'
+    if (hour < 19) return 'Buenas tardes'
+    return 'Buenas noches'
+}
+
 export default function AdminPage() {
     const [dialog, setDialog] = useState<AppDialogState | null>(null)
     const [section, setSection] = useState<Section>('home')
@@ -111,6 +119,8 @@ export default function AdminPage() {
     const visibleNavItems = isAdmin
         ? NAV_ITEMS
         : NAV_ITEMS.filter((item) => WORKER_ALLOWED_SECTIONS.includes(item.id))
+    const firstName = currentStaff?.full_name?.split(' ')[0] || ''
+    const roleLabel = isAdmin ? 'Admin' : 'Trabajador'
 
     useEffect(() => {
         bootstrap()
@@ -273,7 +283,9 @@ export default function AdminPage() {
     async function logout() {
         askConfirm({
             title: 'Cerrar sesión',
-            message: '¿Seguro que quieres salir del panel?',
+            message: firstName
+                ? `¿Seguro que quieres salir del panel, ${firstName}?`
+                : '¿Seguro que quieres salir del panel?',
             tone: 'danger',
             onConfirm: async () => {
                 await supabase.auth.signOut()
@@ -473,11 +485,16 @@ export default function AdminPage() {
                     <div className="flex h-screen flex-col p-6">
                         <div className="border-b border-white/10 pb-6">
                             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--brand)]">
-                                Admin
+                                {roleLabel}
                             </p>
                             <h1 className="mt-3 text-xl font-semibold tracking-[-0.03em]">
                                 {business?.name || 'Champions Barbershop'}
                             </h1>
+                            {firstName && (
+                                <p className="mt-2 text-sm text-[var(--app-muted)]">
+                                    Hola, {firstName}
+                                </p>
+                            )}
                         </div>
 
                         <DesktopNav section={section} setSection={setSection} items={visibleNavItems} />
@@ -498,11 +515,16 @@ export default function AdminPage() {
                         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
                             <div>
                                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--brand)] lg:hidden">
-                                    Admin
+                                    {roleLabel}
                                 </p>
                                 <h1 className="text-lg font-semibold tracking-[-0.02em]">
                                     {SECTION_TITLES[section]}
                                 </h1>
+                                {firstName && (
+                                    <p className="mt-0.5 text-xs text-[var(--app-muted)] lg:hidden">
+                                        Hola, {firstName}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-3">
@@ -524,6 +546,7 @@ export default function AdminPage() {
                                 business={business}
                                 setSection={setSection}
                                 isAdmin={isAdmin}
+                                firstName={firstName}
                             />
                         )}
 
@@ -775,6 +798,7 @@ function HomeSection({
     business,
     setSection,
     isAdmin,
+    firstName,
 }: {
     stats: {
         today: number
@@ -791,13 +815,20 @@ function HomeSection({
     business: any
     setSection: (section: Section) => void
     isAdmin: boolean
+    firstName: string
 }) {
+    const greeting = `${getTimeGreeting()}${firstName ? `, ${firstName}` : ''}.`
+
     return (
         <section className="animate-fade-in">
             <SectionHeader
                 eyebrow="Resumen"
-                title="Panel de control"
-                description="Gestiona citas, servicios, disponibilidad y configuración visual del negocio."
+                title={isAdmin ? 'Panel de control' : 'Tu panel'}
+                description={
+                    isAdmin
+                        ? `${greeting} Este es el resumen de ${business?.name || 'tu negocio'} hoy.`
+                        : `${greeting} Aquí tienes tus citas, tu disponibilidad y tus ingresos de hoy.`
+                }
                 action={
                     <Link href="/reservar" className="btn-primary text-center">
                         Crear reserva manual
@@ -806,11 +837,11 @@ function HomeSection({
             />
 
             <div className="mt-6 grid gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Citas hoy" value={stats.today} />
-                <MetricCard label="Pendientes / activas" value={stats.pending} />
+                <MetricCard label={isAdmin ? 'Citas hoy' : 'Tus citas hoy'} value={stats.today} />
+                <MetricCard label={isAdmin ? 'Pendientes / activas' : 'Tus pendientes'} value={stats.pending} />
                 <MetricCard label="Servicios" value={stats.services} />
                 <MetricCard
-                    label="Ingresos hoy"
+                    label={isAdmin ? 'Ingresos hoy' : 'Tus ingresos hoy'}
                     value={formatCurrency(stats.revenueToday, business?.currency || 'EUR')}
                 />
             </div>
@@ -1126,7 +1157,11 @@ function AppointmentsSection({
             <SectionHeader
                 eyebrow="Gestión"
                 title="Citas"
-                description="Filtra, revisa, confirma, cancela o reagenda reservas usando disponibilidad real."
+                description={
+                    isAdmin
+                        ? 'Filtra, revisa, confirma, cancela o reagenda las citas del negocio, de cualquier barbero.'
+                        : 'Filtra, revisa, confirma, cancela o reagenda tus propias citas.'
+                }
                 action={
                     <button onClick={onOpenCalendar} className="btn-primary gap-2">
                         <CalendarDays size={16} />
@@ -2212,8 +2247,12 @@ function ScheduleSection({
         <section className="animate-fade-in">
             <SectionHeader
                 eyebrow="Agenda"
-                title="Disponibilidad"
-                description="Controla horarios semanales, días libres, feriados, descansos y bloqueos parciales."
+                title={isAdmin ? 'Disponibilidad' : 'Tu disponibilidad'}
+                description={
+                    isAdmin
+                        ? 'Elige un barbero y controla su horario semanal, días libres y descansos. Los cambios de cada uno son independientes.'
+                        : 'Controla tu horario semanal, tus días libres y tus descansos. No afecta la agenda de otros barberos.'
+                }
             />
 
             {isAdmin && bookableWorkers.length > 0 && (
@@ -2258,7 +2297,11 @@ function ScheduleSection({
             <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <AdminPanel
                     title="Horario semanal"
-                    description="Define qué días están disponibles para reservas."
+                    description={
+                        isAdmin
+                            ? 'Define qué días y a qué hora trabaja el barbero seleccionado arriba.'
+                            : 'Define qué días y a qué hora trabajas. Los clientes solo verán estos horarios como disponibles contigo.'
+                    }
                 >
                     <div className="divide-y divide-white/10">
                         {WEEK_DAYS.map((day, index) => {
@@ -2338,7 +2381,11 @@ function ScheduleSection({
                 <div className="space-y-6">
                     <AdminPanel
                         title="Días libres"
-                        description="Vacaciones, feriados o días completos sin reservas."
+                        description={
+                            isAdmin
+                                ? 'Vacaciones o ausencias de un barbero, o feriados que cierran todo el negocio.'
+                                : 'Tus vacaciones o ausencias. Un administrador puede además cerrar el negocio completo por feriado.'
+                        }
                     >
                         <div className="space-y-3 p-5">
                             {isAdmin && bookableWorkers.length > 0 && (
@@ -2414,7 +2461,11 @@ function ScheduleSection({
 
                     <AdminPanel
                         title="Bloqueos y descansos"
-                        description="Almuerzos, pausas o ausencias parciales."
+                        description={
+                            isAdmin
+                                ? 'Almuerzos o pausas del barbero seleccionado. Mientras descansa, los demás siguen recibiendo reservas.'
+                                : 'Tu almuerzo o tus pausas. Mientras descansas, los demás barberos siguen recibiendo reservas con normalidad.'
+                        }
                         action={
                             <button onClick={createBreak} className="btn-primary">
                                 + Nuevo bloqueo
@@ -2593,7 +2644,7 @@ function StaffSection({
             <SectionHeader
                 eyebrow="Equipo"
                 title="Trabajadores y roles"
-                description="Administra quién puede entrar al panel, con qué rol, y quién tiene agenda propia."
+                description="Cada persona puede ser administrador, trabajador con agenda propia, o ambas cosas a la vez."
                 action={
                     <button onClick={openCreateModal} className="btn-primary">
                         + Nuevo trabajador
