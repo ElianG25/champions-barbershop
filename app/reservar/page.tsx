@@ -3,14 +3,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
-import {
-  addMinutes,
-  generateSlots,
-  getDayOfWeek,
-  isPastDate,
-  isPastSlot,
-  rangesOverlap,
-} from '@/lib/booking'
+import { addMinutes, isPastDate } from '@/lib/booking'
+import { getAvailableSlots } from '@/lib/availability'
 import { buildThemeStyle } from '@/lib/theme'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import { NeutralLoader } from '@/components/ui/NeutralLoader'
@@ -19,8 +13,9 @@ import { DateSelector } from '@/components/ui/DateSelector'
 import { TimeSelector } from '@/components/ui/TimeSelector'
 import { useSearchParams } from 'next/navigation'
 import { translateService } from '@/lib/landingTranslations'
+import type { BusinessSettings, Staff } from '@/types/database'
 
-type Step = 'service' | 'client' | 'date' | 'time'
+type Step = 'service' | 'barber' | 'client' | 'date' | 'time'
 
 type Service = {
   id: string
@@ -40,9 +35,13 @@ export default function ReservarPage() {
 function ReservarContent() {
   const [activeStep, setActiveStep] = useState<Step>('service')
 
-  const [business, setBusiness] = useState<any>(null)
+  const [business, setBusiness] = useState<BusinessSettings | null>(null)
   const [services, setServices] = useState<Service[]>([])
   const [selectedService, setSelectedService] = useState<Service | null>(null)
+  const [workers, setWorkers] = useState<Staff[]>([])
+  const [selectedWorker, setSelectedWorker] = useState<Staff | null>(null)
+  const [availableWorkerIds, setAvailableWorkerIds] = useState<string[]>([])
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false)
 
   const searchParams = useSearchParams()
   const language = searchParams.get('lang') === 'en' ? 'en' : 'es'
@@ -66,8 +65,10 @@ function ReservarContent() {
       customer: 'Cliente',
       date: 'Fecha',
       time: 'Hora',
+      barber: 'Barbero',
       pending: 'Pendiente',
       stepService: 'Servicio',
+      stepBarber: 'Barbero',
       stepCustomer: 'Datos del cliente',
       stepDate: 'Fecha',
       stepTime: 'Horario',
@@ -85,14 +86,17 @@ function ReservarContent() {
       confirming: 'Confirmando...',
       completeName: 'Completa tu nombre.',
       invalidPhone: 'Ingresa un número de teléfono válido.',
-      selectAll: 'Selecciona servicio, fecha y hora.',
+      selectAll: 'Selecciona servicio, barbero, fecha y hora.',
       createError: 'No se pudo crear la reserva.',
       pastDate: 'No puedes reservar en una fecha pasada.',
       dayUnavailable: 'Este día no está disponible. Motivo:',
       loadingScheduleError: 'Error cargando horarios.',
       closedDay: 'No trabajamos este día.',
       invalidDuration: 'Este servicio no tiene una duración válida.',
-      noSlots: 'No hay horarios disponibles para esta fecha.',
+      noSlots: 'No hay horarios disponibles para esta fecha con este barbero.',
+      noBarbers: 'No hay barberos disponibles en este momento.',
+      tryAnotherBarber: 'Prueba con otro barbero disponible ese día:',
+      noAlternativeBarber: 'Ningún barbero tiene horario disponible este día.',
     },
     en: {
       loadingEyebrow: 'Online booking',
@@ -111,8 +115,10 @@ function ReservarContent() {
       customer: 'Customer',
       date: 'Date',
       time: 'Time',
+      barber: 'Barber',
       pending: 'Pending',
       stepService: 'Service',
+      stepBarber: 'Barber',
       stepCustomer: 'Customer details',
       stepDate: 'Date',
       stepTime: 'Time',
@@ -130,14 +136,17 @@ function ReservarContent() {
       confirming: 'Confirming...',
       completeName: 'Enter your name.',
       invalidPhone: 'Enter a valid phone number.',
-      selectAll: 'Select service, date and time.',
+      selectAll: 'Select service, barber, date and time.',
       createError: 'Could not create the booking.',
       pastDate: 'You cannot book a past date.',
       dayUnavailable: 'This day is not available. Reason:',
       loadingScheduleError: 'Error loading schedule.',
       closedDay: 'We are closed on this day.',
       invalidDuration: 'This service does not have a valid duration.',
-      noSlots: 'No available times for this date.',
+      noSlots: 'No available times for this date with this barber.',
+      noBarbers: 'No barbers available right now.',
+      tryAnotherBarber: 'Try another barber available that day:',
+      noAlternativeBarber: 'No barber has availability this day.',
     },
   }
 
@@ -162,9 +171,9 @@ function ReservarContent() {
   }, [])
 
   useEffect(() => {
-    if (!selectedService || !date) return
+    if (!selectedService || !selectedWorker || !date) return
     loadSlots()
-  }, [selectedService, date])
+  }, [selectedService, selectedWorker, date])
 
   function serviceName(service: Service) {
     return language === 'en' ? translateService(service).name : service.name
@@ -179,19 +188,31 @@ function ReservarContent() {
   async function loadInitialData() {
     setLoading(true)
 
-    const { data: businessData } = await supabase
+    const { data: businessDataRaw } = await supabase
       .from('business_settings')
       .select('*')
       .single()
+
+    const businessData = businessDataRaw as BusinessSettings | null
 
     const { data: servicesData } = await supabase
       .from('services')
       .select('*')
       .eq('is_active', true)
       .order('price', { ascending: true })
+      .returns<Service[]>()
+
+    const { data: workersData } = await supabase
+      .from('staff')
+      .select('*')
+      .eq('is_worker', true)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .returns<Staff[]>()
 
     setBusiness(businessData)
     setServices(servicesData || [])
+    setWorkers(workersData || [])
     setLoading(false)
   }
 
@@ -199,6 +220,15 @@ function ReservarContent() {
     setSelectedService(service)
     setSelectedSlot('')
     setSlots([])
+    setMessage('')
+    setActiveStep('barber')
+  }
+
+  function selectWorker(worker: Staff) {
+    setSelectedWorker(worker)
+    setSelectedSlot('')
+    setSlots([])
+    setAvailableWorkerIds([])
     setMessage('')
     setActiveStep('client')
   }
@@ -225,13 +255,39 @@ function ReservarContent() {
     setActiveStep('time')
   }
 
+  function switchToAvailableWorker(worker: Staff) {
+    setSelectedWorker(worker)
+    setSelectedSlot('')
+    setMessage('')
+    setAvailableWorkerIds([])
+  }
+
+  async function loadAlternativeWorkers(duration: number) {
+    const otherWorkers = workers.filter((worker) => worker.id !== selectedWorker?.id)
+
+    if (otherWorkers.length === 0) return
+
+    setLoadingAlternatives(true)
+
+    const results = await Promise.all(
+      otherWorkers.map(async (worker) => {
+        const result = await getAvailableSlots(date, duration, worker.id)
+        return { workerId: worker.id, available: result.status === 'ok' && result.slots.length > 0 }
+      })
+    )
+
+    setAvailableWorkerIds(results.filter((item) => item.available).map((item) => item.workerId))
+    setLoadingAlternatives(false)
+  }
+
   async function loadSlots() {
-    if (!selectedService || !date) return
+    if (!selectedService || !selectedWorker || !date) return
 
     setLoadingSlots(true)
     setMessage('')
     setSlots([])
     setSelectedSlot('')
+    setAvailableWorkerIds([])
 
     if (isPastDate(date)) {
       setMessage(t.pastDate)
@@ -239,103 +295,35 @@ function ReservarContent() {
       return
     }
 
-    const dayOfWeek = getDayOfWeek(date)
-
-    const { data: dayOff } = await supabase
-      .from('days_off')
-      .select('*')
-      .eq('date', date)
-      .maybeSingle()
-
-    if (dayOff) {
-      setMessage(t.dayUnavailable + ` ${dayOff.reason}`)
-      setLoadingSlots(false)
-      return
-    }
-
-    const { data: rules, error: rulesError } = await supabase
-      .from('availability_rules')
-      .select('*')
-      .eq('day_of_week', dayOfWeek)
-
-    if (rulesError) {
-      setMessage(t.loadingScheduleError)
-      setLoadingSlots(false)
-      return
-    }
-
-    const activeRules = (rules || []).filter((rule) => rule.is_active !== false)
-
-    if (activeRules.length === 0) {
-      setMessage(t.closedDay)
-      setLoadingSlots(false)
-      return
-    }
-
-    const { data: breaks } = await supabase
-      .from('breaks')
-      .select('*')
-      .eq('date', date)
-
-    const activeBreaks = (breaks || []).filter((b) => b.is_active !== false)
-
-    const { data: appointments } = await supabase
-      .from('appointments')
-      .select('*')
-      .eq('date', date)
-      .in('status', ['pending', 'confirmed'])
-
     const duration = Number(selectedService.duration_minutes)
+    const result = await getAvailableSlots(date, duration, selectedWorker.id)
 
-    if (!duration || duration <= 0) {
-      setMessage(t.invalidDuration)
-      setLoadingSlots(false)
-      return
-    }
-
-    let allSlots: string[] = []
-
-    for (const rule of activeRules) {
-      const start = String(rule.start_time).slice(0, 5)
-      const end = String(rule.end_time).slice(0, 5)
-      allSlots = [...allSlots, ...generateSlots(start, end, duration)]
-    }
-
-    const available = allSlots.filter((slot) => {
-      if (isPastSlot(date, slot)) return false
-
-      const slotEnd = addMinutes(slot, duration)
-
-      const overlapsBreak = activeBreaks.some((b) =>
-        rangesOverlap(
-          slot,
-          slotEnd,
-          String(b.start_time).slice(0, 5),
-          String(b.end_time).slice(0, 5)
-        )
-      )
-
-      const overlapsAppointment = (appointments || []).some((a) =>
-        rangesOverlap(
-          slot,
-          slotEnd,
-          String(a.start_time).slice(0, 5),
-          String(a.end_time).slice(0, 5)
-        )
-      )
-
-      return !overlapsBreak && !overlapsAppointment
-    })
-
-    const uniqueAvailable = [...new Set(available)].sort()
-
-    setSlots(uniqueAvailable)
-
-    if (uniqueAvailable.length === 0) {
-      setMessage(t.noSlots)
+    switch (result.status) {
+      case 'invalid-duration':
+        setMessage(t.invalidDuration)
+        break
+      case 'day-off':
+        setMessage(t.dayUnavailable + ` ${result.reason}`)
+        break
+      case 'error':
+        setMessage(t.loadingScheduleError)
+        break
+      case 'closed':
+        setMessage(t.closedDay)
+        break
+      case 'ok':
+        setSlots(result.slots)
+        if (result.slots.length === 0) setMessage(t.noSlots)
+        break
     }
 
     setLoadingSlots(false)
+
+    const hasNoSlots = result.status !== 'ok' || result.slots.length === 0
+
+    if (hasNoSlots) {
+      await loadAlternativeWorkers(duration)
+    }
   }
 
   function handleSelectSlot(slot: string) {
@@ -356,7 +344,7 @@ function ReservarContent() {
   }
 
   async function submitBooking() {
-    if (!selectedService || !date || !selectedSlot) {
+    if (!selectedService || !selectedWorker || !date || !selectedSlot) {
       setMessage(t.selectAll)
       return
     }
@@ -381,6 +369,7 @@ function ReservarContent() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         service_id: selectedService.id,
+        worker_id: selectedWorker.id,
         customer_name: customerName,
         customer_phone: customerPhone,
         customer_email: customerEmail || null,
@@ -456,6 +445,9 @@ function ReservarContent() {
     )
   }
 
+  const currency = business?.currency || 'EUR'
+  const timeFormat = business?.time_format || '24h'
+
   return (
 
     <main
@@ -494,6 +486,7 @@ function ReservarContent() {
 
             <div className="mt-6 border-t border-white/10 pt-5">
               <SummaryRow label={t.service} value={selectedService ? serviceName(selectedService) : t.pending} />
+              <SummaryRow label={t.barber} value={selectedWorker?.full_name || t.pending} />
               <SummaryRow label={t.customer} value={customerName || t.pending} />
               <SummaryRow
                 label={t.date}
@@ -503,7 +496,7 @@ function ReservarContent() {
                 label={t.time}
                 value={
                   selectedSlot
-                    ? formatTime(selectedSlot, business?.time_format || '24h')
+                    ? formatTime(selectedSlot, timeFormat)
                     : t.pending
                 }
               />
@@ -544,7 +537,7 @@ function ReservarContent() {
 
                       <div className="shrink-0 text-right">
                         <p className="font-semibold text-[var(--brand)]">
-                          {formatCurrency(Number(service.price), business?.currency || 'EUR')}
+                          {formatCurrency(Number(service.price), currency)}
                         </p>
                         <p className="mt-1 text-xs text-[var(--app-muted)]">
                           {service.duration_minutes} min
@@ -559,12 +552,56 @@ function ReservarContent() {
 
           <AccordionPanel
             step="02"
+            title={t.stepBarber}
+            active={activeStep === 'barber'}
+            completed={Boolean(selectedWorker)}
+            summary={selectedWorker?.full_name}
+            disabled={!selectedService}
+            onOpen={() => selectedService && setActiveStep('barber')}
+            completedText={t.selected}
+          >
+            {workers.length === 0 && <InlineNotice text={t.noBarbers} />}
+
+            <div className="grid gap-px overflow-hidden border border-white/10 bg-white/10 sm:grid-cols-2">
+              {workers.map((worker) => {
+                const active = selectedWorker?.id === worker.id
+
+                return (
+                  <button
+                    key={worker.id}
+                    onClick={() => selectWorker(worker)}
+                    className={`flex items-center gap-4 bg-[var(--app-surface)] p-5 text-left transition ${active
+                      ? 'outline outline-1 outline-[var(--brand)]'
+                      : 'hover:bg-white/[0.08]'
+                      }`}
+                  >
+                    {worker.avatar_url ? (
+                      <img
+                        src={worker.avatar_url}
+                        alt={worker.full_name}
+                        className="h-12 w-12 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/10 text-lg font-semibold">
+                        {worker.full_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+
+                    <h3 className="text-lg font-semibold">{worker.full_name}</h3>
+                  </button>
+                )
+              })}
+            </div>
+          </AccordionPanel>
+
+          <AccordionPanel
+            step="03"
             title={t.stepCustomer}
             active={activeStep === 'client'}
             completed={Boolean(customerName.trim() && isValidPhoneNumber(customerPhone))}
             summary={customerName || undefined}
-            disabled={!selectedService}
-            onOpen={() => selectedService && setActiveStep('client')}
+            disabled={!selectedService || !selectedWorker}
+            onOpen={() => selectedService && selectedWorker && setActiveStep('client')}
             completedText={t.selected}
           >
             <div className="grid gap-3 sm:grid-cols-2">
@@ -585,20 +622,20 @@ function ReservarContent() {
           </AccordionPanel>
 
           <AccordionPanel
-            step="03"
+            step="04"
             title={t.stepDate}
             active={activeStep === 'date'}
             completed={Boolean(date)}
             summary={date || undefined}
-            disabled={!selectedService || !customerName.trim() || !isValidPhoneNumber(customerPhone)}
-            onOpen={() => selectedService && customerName && customerPhone && setActiveStep('date')}
+            disabled={!selectedService || !selectedWorker || !customerName.trim() || !isValidPhoneNumber(customerPhone)}
+            onOpen={() => selectedService && selectedWorker && customerName && customerPhone && setActiveStep('date')}
             completedText={t.selected}
           >
             <DateSelector value={date} onChange={selectDate} days={21} />
           </AccordionPanel>
 
           <AccordionPanel
-            step="04"
+            step="05"
             title={t.stepTime}
             active={activeStep === 'time'}
             completed={Boolean(selectedSlot)}
@@ -623,8 +660,31 @@ function ReservarContent() {
                 value={selectedSlot}
                 options={slots}
                 onChange={handleSelectSlot}
-                timeFormat={business?.time_format || '24h'}
+                timeFormat={timeFormat}
               />
+            )}
+
+            {!loadingSlots && slots.length === 0 && !loadingAlternatives && availableWorkerIds.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-[var(--app-muted)]">{t.tryAnotherBarber}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {workers
+                    .filter((worker) => availableWorkerIds.includes(worker.id))
+                    .map((worker) => (
+                      <button
+                        key={worker.id}
+                        onClick={() => switchToAvailableWorker(worker)}
+                        className="border border-[var(--brand)] px-4 py-2 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand)] hover:text-[var(--app-bg)]"
+                      >
+                        {worker.full_name}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {!loadingSlots && slots.length === 0 && !loadingAlternatives && availableWorkerIds.length === 0 && workers.length > 1 && (
+              <p className="mt-4 text-sm text-[var(--app-muted)]">{t.noAlternativeBarber}</p>
             )}
           </AccordionPanel>
 
@@ -642,6 +702,7 @@ function ReservarContent() {
           business={business}
           service={selectedService}
           serviceName={serviceName(selectedService)}
+          workerName={selectedWorker?.full_name || ''}
           language={language}
           name={customerName}
           phone={customerPhone}
@@ -734,6 +795,7 @@ function ConfirmModal({
   business,
   service,
   serviceName,
+  workerName,
   language,
   name,
   phone,
@@ -743,9 +805,10 @@ function ConfirmModal({
   onClose,
   onConfirm,
 }: {
-  business: any
+  business: BusinessSettings | null
   service: Service
   serviceName: string
+  workerName: string
   language: 'es' | 'en'
   name: string
   phone: string
@@ -764,6 +827,7 @@ function ConfirmModal({
       customer: 'Cliente',
       phone: 'Teléfono',
       service: 'Servicio',
+      barber: 'Barbero',
       date: 'Fecha',
       time: 'Hora',
       price: 'Precio',
@@ -779,6 +843,7 @@ function ConfirmModal({
       customer: 'Customer',
       phone: 'Phone',
       service: 'Service',
+      barber: 'Barber',
       date: 'Date',
       time: 'Time',
       price: 'Price',
@@ -813,6 +878,7 @@ function ConfirmModal({
           <ModalRow label={t.customer} value={name} />
           <ModalRow label={t.phone} value={phone} />
           <ModalRow label={t.service} value={serviceName} />
+          <ModalRow label={t.barber} value={workerName} />
           <ModalRow label={t.date} value={date ? formatDate(date) : '—'} />
           <ModalRow
             label={t.time}
@@ -880,6 +946,14 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <span className="max-w-[55%] truncate text-right text-sm font-semibold">
         {value}
       </span>
+    </div>
+  )
+}
+
+function InlineNotice({ text }: { text: string }) {
+  return (
+    <div className="border border-white/10 bg-white/[0.04] p-4 text-sm leading-6 text-[var(--app-muted)]">
+      {text}
     </div>
   )
 }

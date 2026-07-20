@@ -72,6 +72,9 @@ export async function POST(
         *,
         services (
           name
+        ),
+        staff (
+          telegram_chat_id
         )
       `)
       .eq('cancel_token', cleanToken)
@@ -131,7 +134,8 @@ export async function POST(
 📅 <b>Fecha:</b> ${appointmentDate}
 🕒 <b>Hora:</b> ${appointmentHour}
 
-⚠️ <i>La cita fue cancelada directamente por el cliente desde el enlace de cancelación.</i>`
+⚠️ <i>La cita fue cancelada directamente por el cliente desde el enlace de cancelación.</i>`,
+      appointment.staff?.telegram_chat_id
     )
 
     return NextResponse.json({

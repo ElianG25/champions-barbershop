@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
-import { getDayOfWeek, isPastDate, isPastSlot, rangesOverlap } from '@/lib/booking'
+import { isPastDate, isPastSlot } from '@/lib/booking'
+import { getAvailableSlots } from '@/lib/availability'
 import { sendTelegramMessage } from '@/lib/telegram'
 import { formatDate, formatTime } from '@/lib/utils'
 
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
 
     const {
       service_id,
+      worker_id,
       customer_name,
       customer_phone,
       customer_email,
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
 
     if (
       !service_id ||
+      !worker_id ||
       !customer_name ||
       !customer_phone ||
       !date ||
@@ -90,88 +93,26 @@ export async function POST(req: Request) {
       )
     }
 
-    const { data: dayOff } = await supabase
-      .from('days_off')
+    const { data: worker, error: workerError } = await supabase
+      .from('staff')
       .select('*')
-      .eq('date', date)
-      .maybeSingle()
-
-    if (dayOff) {
-      return NextResponse.json(
-        { error: `Este día no está disponible. Motivo: ${dayOff.reason}` },
-        { status: 400 }
-      )
-    }
-
-    const dayOfWeek = getDayOfWeek(date)
-
-    const { data: rules } = await supabase
-      .from('availability_rules')
-      .select('*')
-      .eq('day_of_week', dayOfWeek)
+      .eq('id', worker_id)
+      .eq('is_worker', true)
       .eq('is_active', true)
+      .single()
 
-    if (!rules || rules.length === 0) {
+    if (workerError || !worker) {
       return NextResponse.json(
-        { error: 'No hay horario disponible ese día.' },
+        { error: 'Barbero no disponible.' },
         { status: 400 }
       )
     }
 
-    const isInsideWorkHours = rules.some((rule) => {
-      const ruleStart = String(rule.start_time).slice(0, 5)
-      const ruleEnd = String(rule.end_time).slice(0, 5)
+    const slotsResult = await getAvailableSlots(date, service.duration_minutes, worker_id)
 
-      return start_time >= ruleStart && end_time <= ruleEnd
-    })
-
-    if (!isInsideWorkHours) {
+    if (slotsResult.status !== 'ok' || !slotsResult.slots.includes(start_time)) {
       return NextResponse.json(
-        { error: 'La hora seleccionada está fuera del horario laboral.' },
-        { status: 400 }
-      )
-    }
-
-    const { data: breaks } = await supabase
-      .from('breaks')
-      .select('*')
-      .eq('date', date)
-      .eq('is_active', true)
-
-    const overlapsBreak = (breaks || []).some((breakItem) =>
-      rangesOverlap(
-        start_time,
-        end_time,
-        String(breakItem.start_time).slice(0, 5),
-        String(breakItem.end_time).slice(0, 5)
-      )
-    )
-
-    if (overlapsBreak) {
-      return NextResponse.json(
-        { error: 'Ese horario coincide con un descanso.' },
-        { status: 400 }
-      )
-    }
-
-    const { data: appointments } = await supabase
-      .from('appointments')
-      .select('*')
-      .eq('date', date)
-      .in('status', ['pending', 'confirmed'])
-
-    const overlapsAppointment = (appointments || []).some((appointment) =>
-      rangesOverlap(
-        start_time,
-        end_time,
-        String(appointment.start_time).slice(0, 5),
-        String(appointment.end_time).slice(0, 5)
-      )
-    )
-
-    if (overlapsAppointment) {
-      return NextResponse.json(
-        { error: 'Ese horario ya fue reservado.' },
+        { error: 'Ese horario ya no está disponible con este barbero.' },
         { status: 400 }
       )
     }
@@ -222,6 +163,7 @@ export async function POST(req: Request) {
       .from('appointments')
       .insert({
         service_id,
+        worker_id,
         customer_name,
         customer_phone: normalizedPhone,
         customer_email,
@@ -255,6 +197,7 @@ export async function POST(req: Request) {
     const customerNameText = customer_name || 'Cliente'
     const businessNameText = business.name || 'el negocio'
     const serviceNameText = service.name || 'servicio'
+    const workerNameText = worker.full_name || 'Sin asignar'
     const appointmentDateText = formatDate(date || 'fecha no especificada')
     const appointmentHourText = formatTime(appointment.start_time || 'No especificada')
     const phoneText = normalizedPhone || 'No especificado'
@@ -266,6 +209,7 @@ export async function POST(req: Request) {
 ✅ We have confirmed your appointment at *${businessNameText}* 💈
 
 💇🏼‍♂️ *Service:* ${serviceNameText}
+💈 *Barber:* ${workerNameText}
 📅 *Date:* ${appointmentDateText}
 🕒 *Time:* ${appointmentHourText}
 
@@ -279,6 +223,7 @@ ${cancelUrl}`
 ✅ Hemos confirmado tu cita en *${businessNameText}* 💈
 
 💇🏼‍♂️ *Servicio:* ${serviceNameText}
+💈 *Barbero:* ${workerNameText}
 📅 *Fecha:* ${appointmentDateText}
 🕒 *Hora:* ${appointmentHourText}
 
@@ -296,11 +241,13 @@ ${cancelUrl}`
 👤 <b>Cliente:</b> ${escapeHtml(customerNameText)}
 📞 <b>Teléfono:</b> ${escapeHtml(phoneText)}
 💈 <b>Servicio:</b> ${escapeHtml(serviceNameText)}
+✂️ <b>Barbero:</b> ${escapeHtml(workerNameText)}
 📅 <b>Fecha:</b> ${escapeHtml(appointmentDateText)}
 🕒 <b>Hora:</b> ${escapeHtml(appointmentHourText)}
 
 📲 <b>Notificar por WhatsApp:</b>
-<a href="${escapeHtml(whatsappLink)}">Abrir mensaje listo para enviar</a>`
+<a href="${escapeHtml(whatsappLink)}">Abrir mensaje listo para enviar</a>`,
+      worker.telegram_chat_id
     )
 
     return NextResponse.json(appointment)

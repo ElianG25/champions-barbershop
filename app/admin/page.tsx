@@ -6,12 +6,10 @@ import { supabase } from '@/lib/supabaseClient'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import {
     addMinutes,
-    generateSlots,
-    getDayOfWeek,
     isPastDate,
-    isPastSlot,
     rangesOverlap,
 } from '@/lib/booking'
+import { getAvailableSlots } from '@/lib/availability'
 import { buildThemeStyle } from '@/lib/theme'
 import { NeutralLoader } from '@/components/ui/NeutralLoader'
 import {
@@ -27,6 +25,7 @@ import {
     Pencil,
     Trash2,
     ImageIcon,
+    Users,
 } from 'lucide-react'
 import {
     clearAdminActivity,
@@ -45,8 +44,9 @@ import { MetricCard } from '@/components/admin/MetricCard'
 import { SectionHeader } from '@/components/admin/SectionHeader'
 import { AdminPanel } from '@/components/admin/AdminPanel'
 import { StatusBadge, ActiveBadge } from '@/components/admin/StatusBadge'
+import type { Staff } from '@/types/database'
 
-type Section = 'home' | 'appointments' | 'services' | 'products' | 'schedule' | 'settings'
+type Section = 'home' | 'appointments' | 'services' | 'products' | 'schedule' | 'staff' | 'settings'
 type AppointmentFilter =
     | 'today'
     | 'tomorrow'
@@ -57,6 +57,8 @@ type AppointmentFilter =
     | 'cancelled'
     | 'all'
 type AsyncVoid = () => Promise<void>
+
+const WORKER_ALLOWED_SECTIONS: Section[] = ['home', 'appointments', 'schedule']
 
 const NAV_ITEMS: {
     id: Section
@@ -69,6 +71,7 @@ const NAV_ITEMS: {
         { id: 'services', label: 'Servicios', mobileLabel: 'Servicios', icon: <Scissors size={16} /> },
         { id: 'products', label: 'Productos', mobileLabel: 'Productos', icon: <Package size={16} />, },
         { id: 'schedule', label: 'Disponibilidad', mobileLabel: 'Horario', icon: <Clock size={16} /> },
+        { id: 'staff', label: 'Equipo', mobileLabel: 'Equipo', icon: <Users size={16} /> },
         { id: 'settings', label: 'Ajustes', mobileLabel: 'Ajustes', icon: <Settings size={16} /> },
     ]
 
@@ -78,6 +81,7 @@ const SECTION_TITLES: Record<Section, string> = {
     services: 'Servicios',
     products: 'Productos',
     schedule: 'Disponibilidad',
+    staff: 'Equipo',
     settings: 'Ajustes',
 }
 
@@ -88,6 +92,8 @@ export default function AdminPage() {
     const [section, setSection] = useState<Section>('home')
     const [loading, setLoading] = useState(true)
     const [business, setBusiness] = useState<any>(null)
+    const [currentStaff, setCurrentStaff] = useState<Staff | null>(null)
+    const [staffList, setStaffList] = useState<Staff[]>([])
     const [appointments, setAppointments] = useState<any[]>([])
     const [services, setServices] = useState<any[]>([])
     const [availability, setAvailability] = useState<any[]>([])
@@ -96,6 +102,11 @@ export default function AdminPage() {
     const [calendarOpen, setCalendarOpen] = useState(false)
     const [whatsappAppointment, setWhatsappAppointment] = useState<any>(null)
     const [products, setProducts] = useState<any[]>([])
+
+    const isAdmin = Boolean(currentStaff?.is_admin)
+    const visibleNavItems = isAdmin
+        ? NAV_ITEMS
+        : NAV_ITEMS.filter((item) => WORKER_ALLOWED_SECTIONS.includes(item.id))
 
     useEffect(() => {
         bootstrap()
@@ -171,31 +182,62 @@ export default function AdminPage() {
 
         touchAdminActivity()
 
-        await loadData()
+        const { data: staffData } = await supabase
+            .from('staff')
+            .select('*')
+            .eq('auth_user_id', data.user.id)
+            .eq('is_active', true)
+            .maybeSingle()
+
+        if (!staffData) {
+            await supabase.auth.signOut()
+            clearAdminActivity()
+            setLogoutReason('Tu cuenta no tiene un perfil asignado. Contacta al administrador.')
+            window.location.href = '/login'
+            return
+        }
+
+        setCurrentStaff(staffData)
+
+        await loadData(staffData)
         setLoading(false)
     }
 
-    async function loadData() {
+    async function loadData(staffOverride?: Staff) {
+        const staff = staffOverride || currentStaff
+        const scopeToOwn = Boolean(staff && !staff.is_admin)
+
+        let appointmentsQuery = supabase
+            .from('appointments')
+            .select('*, services(name, price, duration_minutes), staff(full_name)')
+            .order('date', { ascending: true })
+            .order('start_time', { ascending: true })
+
+        let availabilityQuery = supabase.from('availability_rules').select('*').order('day_of_week')
+
+        if (scopeToOwn && staff) {
+            appointmentsQuery = appointmentsQuery.eq('worker_id', staff.id)
+            availabilityQuery = availabilityQuery.eq('worker_id', staff.id)
+        }
+
         const [
             businessResult,
             appointmentResult,
             serviceResult,
             productResult,
             availabilityResult,
+            staffResult,
         ] = await Promise.all([
             supabase.from('business_settings').select('*').single(),
-            supabase
-                .from('appointments')
-                .select('*, services(name, price, duration_minutes)')
-                .order('date', { ascending: true })
-                .order('start_time', { ascending: true }),
+            appointmentsQuery,
             supabase.from('services').select('*').order('price'),
             supabase
                 .from('products')
                 .select('*')
                 .order('sort_order', { ascending: true })
                 .order('created_at', { ascending: false }),
-            supabase.from('availability_rules').select('*').order('day_of_week'),
+            availabilityQuery,
+            supabase.from('staff').select('*').order('sort_order', { ascending: true }),
         ])
 
         setBusiness(businessResult.data)
@@ -203,13 +245,15 @@ export default function AdminPage() {
         setServices(serviceResult.data || [])
         setProducts(productResult.data || [])
         setAvailability(availabilityResult.data || [])
+        setStaffList(staffResult.data || [])
 
         if (
             businessResult.error ||
             appointmentResult.error ||
             serviceResult.error ||
             productResult.error ||
-            availabilityResult.error
+            availabilityResult.error ||
+            staffResult.error
         ) {
             notify('No se pudieron cargar todos los datos', 'Revisa tu conexión o intenta nuevamente.', 'danger')
         }
@@ -396,7 +440,7 @@ export default function AdminPage() {
                             </h1>
                         </div>
 
-                        <DesktopNav section={section} setSection={setSection} />
+                        <DesktopNav section={section} setSection={setSection} items={visibleNavItems} />
 
                         <div className="mt-auto space-y-3 border-t border-white/10 pt-6">
                             <Link href="/" className="btn-secondary block text-center">
@@ -483,6 +527,19 @@ export default function AdminPage() {
                                 notify={notify}
                                 askConfirm={askConfirm}
                                 business={business}
+                                staffList={staffList}
+                                currentStaff={currentStaff}
+                                isAdmin={isAdmin}
+                            />
+                        )}
+
+                        {section === 'staff' && isAdmin && (
+                            <StaffSection
+                                staffList={staffList}
+                                currentStaff={currentStaff}
+                                reload={loadData}
+                                notify={notify}
+                                askConfirm={askConfirm}
                             />
                         )}
 
@@ -497,7 +554,7 @@ export default function AdminPage() {
                 </section>
             </div>
 
-            <MobileNav section={section} setSection={setSection} />
+            <MobileNav section={section} setSection={setSection} items={visibleNavItems} />
 
             {rescheduleAppointment && (
                 <RescheduleModal
@@ -824,10 +881,18 @@ function RevenueDashboard({
     )
 }
 
-function DesktopNav({ section, setSection }: { section: Section; setSection: (section: Section) => void }) {
+function DesktopNav({
+    section,
+    setSection,
+    items,
+}: {
+    section: Section
+    setSection: (section: Section) => void
+    items: typeof NAV_ITEMS
+}) {
     return (
         <nav className="mt-6 space-y-1">
-            {NAV_ITEMS.map((item) => (
+            {items.map((item) => (
                 <button
                     key={item.id}
                     onClick={() => setSection(item.id)}
@@ -846,11 +911,22 @@ function DesktopNav({ section, setSection }: { section: Section; setSection: (se
     )
 }
 
-function MobileNav({ section, setSection }: { section: Section; setSection: (section: Section) => void }) {
+function MobileNav({
+    section,
+    setSection,
+    items,
+}: {
+    section: Section
+    setSection: (section: Section) => void
+    items: typeof NAV_ITEMS
+}) {
     return (
         <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[var(--app-bg)]/95 px-2 py-2 backdrop-blur-xl lg:hidden">
-            <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
-                {NAV_ITEMS.map((item) => (
+            <div
+                className="mx-auto grid max-w-lg gap-1"
+                style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+            >
+                {items.map((item) => (
                     <button
                         key={item.id}
                         onClick={() => setSection(item.id)}
@@ -941,7 +1017,7 @@ function AppointmentsSection({
             </div>
 
             <DataTable
-                headers={['Cliente', 'Servicio', 'Fecha', 'Hora', 'Estado', 'Acciones']}
+                headers={['Cliente', 'Servicio', 'Barbero', 'Fecha', 'Hora', 'Estado', 'Acciones']}
                 rows={appointments.map((appointment) => [
                     <div key="customer">
                         <p className="font-semibold">{appointment.customer_name}</p>
@@ -950,6 +1026,7 @@ function AppointmentsSection({
                         </p>
                     </div>,
                     appointment.services?.name || 'Servicio',
+                    appointment.staff?.full_name || 'Sin asignar',
                     formatDate(appointment.date),
                     formatTime(appointment.start_time, business?.time_format || '24h'),
                     <StatusBadge key="status" status={appointment.status} />,
@@ -990,7 +1067,8 @@ function AppointmentsSection({
                                     {appointment.customer_name}
                                 </p>
                                 <p className="mt-1 text-sm text-[var(--app-muted)]">
-                                    {appointment.services?.name || 'Servicio'}
+                                    {appointment.services?.name || 'Servicio'} ·{' '}
+                                    {appointment.staff?.full_name || 'Sin asignar'}
                                 </p>
                                 <p className="mt-2 text-sm text-[var(--app-muted)]">
                                     {formatDate(appointment.date)} ·{' '}
@@ -1689,6 +1767,9 @@ function ScheduleSection({
     notify,
     askConfirm,
     business,
+    staffList,
+    currentStaff,
+    isAdmin,
 }: {
     availability: any[]
     setAvailability: (value: any) => void
@@ -1701,17 +1782,42 @@ function ScheduleSection({
         onConfirm: () => void | Promise<void>
     }) => void
     business: any
+    staffList: Staff[]
+    currentStaff: Staff | null
+    isAdmin: boolean
 }) {
+    const bookableWorkers = staffList.filter((staff) => staff.is_worker && staff.is_active)
+
     const [daysOff, setDaysOff] = useState<any[]>([])
     const [breaks, setBreaks] = useState<any[]>([])
     const [newDayOff, setNewDayOff] = useState('')
     const [newDayOffReason, setNewDayOffReason] = useState('')
+    const [newDayOffScope, setNewDayOffScope] = useState<'all' | string>('all')
     const [loading, setLoading] = useState(false)
     const [editingBreak, setEditingBreak] = useState<any | null>(null)
+    const [selectedWorkerId, setSelectedWorkerId] = useState('')
 
     useEffect(() => {
+        if (selectedWorkerId) return
+
+        if (!isAdmin) {
+            if (currentStaff) setSelectedWorkerId(currentStaff.id)
+            return
+        }
+
+        if (bookableWorkers.length > 0) setSelectedWorkerId(bookableWorkers[0].id)
+    }, [isAdmin, currentStaff, bookableWorkers])
+
+    useEffect(() => {
+        if (!selectedWorkerId) return
         loadAvailabilityExtras()
-    }, [])
+    }, [selectedWorkerId])
+
+    useEffect(() => {
+        if (!isAdmin && currentStaff) setNewDayOffScope(currentStaff.id)
+    }, [isAdmin, currentStaff])
+
+    const workerAvailability = availability.filter((rule) => rule.worker_id === selectedWorkerId)
 
     async function loadAvailabilityExtras() {
         const today = new Date().toISOString().split('T')[0]
@@ -1723,8 +1829,17 @@ function ScheduleSection({
             .or(`date.lt.${today},and(date.eq.${today},end_time.lt.${now})`)
 
         const [daysOffResult, breaksResult] = await Promise.all([
-            supabase.from('days_off').select('*').order('date'),
-            supabase.from('breaks').select('*').order('date').order('start_time'),
+            supabase
+                .from('days_off')
+                .select('*')
+                .or(`worker_id.is.null,worker_id.eq.${selectedWorkerId}`)
+                .order('date'),
+            supabase
+                .from('breaks')
+                .select('*')
+                .eq('worker_id', selectedWorkerId)
+                .order('date')
+                .order('start_time'),
         ])
 
         setDaysOff(daysOffResult.data || [])
@@ -1739,6 +1854,7 @@ function ScheduleSection({
 
     async function createRule(day: number) {
         const { error } = await supabase.from('availability_rules').insert({
+            worker_id: selectedWorkerId,
             day_of_week: day,
             start_time: '10:00',
             end_time: '20:00',
@@ -1800,17 +1916,26 @@ function ScheduleSection({
             return
         }
 
-        const { data: appointmentsInDay } = await supabase
+        const dayOffWorkerId = newDayOffScope === 'all' ? null : newDayOffScope
+
+        let appointmentsInDayQuery = supabase
             .from('appointments')
             .select('*')
             .eq('date', newDayOff)
             .in('status', ['pending', 'confirmed'])
+
+        if (dayOffWorkerId) {
+            appointmentsInDayQuery = appointmentsInDayQuery.eq('worker_id', dayOffWorkerId)
+        }
+
+        const { data: appointmentsInDay } = await appointmentsInDayQuery
 
         async function saveDayOff() {
             setLoading(true)
 
             const { error } = await supabase.from('days_off').insert({
                 date: newDayOff,
+                worker_id: dayOffWorkerId,
                 reason: newDayOffReason.trim(),
             })
 
@@ -1821,7 +1946,7 @@ function ScheduleSection({
             }
 
             if (appointmentsInDay?.length) {
-                await supabase
+                let cancelQuery = supabase
                     .from('appointments')
                     .update({
                         status: 'cancelled',
@@ -1829,6 +1954,12 @@ function ScheduleSection({
                     })
                     .eq('date', newDayOff)
                     .in('status', ['pending', 'confirmed'])
+
+                if (dayOffWorkerId) {
+                    cancelQuery = cancelQuery.eq('worker_id', dayOffWorkerId)
+                }
+
+                await cancelQuery
             }
 
             setLoading(false)
@@ -1884,6 +2015,7 @@ function ScheduleSection({
 
         setEditingBreak({
             id: null,
+            worker_id: selectedWorkerId,
             name: 'Descanso',
             date: today,
             start_time: '14:00',
@@ -1918,6 +2050,25 @@ function ScheduleSection({
                 description="Controla horarios semanales, días libres, feriados, descansos y bloqueos parciales."
             />
 
+            {isAdmin && bookableWorkers.length > 0 && (
+                <div className="mt-6 overflow-x-auto border border-white/10 bg-[var(--app-surface)] p-3">
+                    <div className="flex min-w-max gap-2">
+                        {bookableWorkers.map((worker) => (
+                            <button
+                                key={worker.id}
+                                onClick={() => setSelectedWorkerId(worker.id)}
+                                className={`border px-4 py-2 text-sm font-semibold transition ${selectedWorkerId === worker.id
+                                    ? 'border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)]'
+                                    : 'border-white/10 text-[var(--app-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)]'
+                                    }`}
+                            >
+                                {worker.full_name}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <AdminPanel
                     title="Horario semanal"
@@ -1925,7 +2076,7 @@ function ScheduleSection({
                 >
                     <div className="divide-y divide-white/10">
                         {WEEK_DAYS.map((day, index) => {
-                            const rule = availability.find(
+                            const rule = workerAvailability.find(
                                 (item) => item.day_of_week === index + 1
                             )
 
@@ -2004,6 +2155,21 @@ function ScheduleSection({
                         description="Vacaciones, feriados o días completos sin reservas."
                     >
                         <div className="space-y-3 p-5">
+                            {isAdmin && bookableWorkers.length > 0 && (
+                                <select
+                                    value={newDayOffScope}
+                                    onChange={(event) => setNewDayOffScope(event.target.value)}
+                                    className="admin-input"
+                                >
+                                    <option value="all">Todo el negocio</option>
+                                    {bookableWorkers.map((worker) => (
+                                        <option key={worker.id} value={worker.id}>
+                                            Solo {worker.full_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+
                             <input
                                 type="date"
                                 value={newDayOff}
@@ -2037,6 +2203,11 @@ function ScheduleSection({
                                         <p className="font-semibold">{formatDate(dayOff.date)}</p>
                                         <p className="mt-1 text-xs text-[var(--app-muted)]">
                                             {dayOff.reason || 'Día no disponible'}
+                                        </p>
+                                        <p className="mt-1 text-xs text-[var(--brand)]">
+                                            {dayOff.worker_id
+                                                ? staffList.find((staff) => staff.id === dayOff.worker_id)?.full_name || 'Trabajador'
+                                                : 'Todo el negocio'}
                                         </p>
                                     </div>
 
@@ -2118,6 +2289,366 @@ function ScheduleSection({
                 </div>
             </div>
         </section>
+    )
+}
+
+function StaffSection({
+    staffList,
+    currentStaff,
+    reload,
+    notify,
+    askConfirm,
+}: {
+    staffList: Staff[]
+    currentStaff: Staff | null
+    reload: AsyncVoid
+    notify: (title: string, message?: string, tone?: 'success' | 'danger' | 'info') => void
+    askConfirm: (options: {
+        title: string
+        message?: string
+        tone?: 'danger' | 'info'
+        onConfirm: () => void | Promise<void>
+    }) => void
+}) {
+    const [modalOpen, setModalOpen] = useState(false)
+    const [editingStaff, setEditingStaff] = useState<Staff | null>(null)
+
+    function openCreateModal() {
+        setEditingStaff(null)
+        setModalOpen(true)
+    }
+
+    function openEditModal(staff: Staff) {
+        setEditingStaff(staff)
+        setModalOpen(true)
+    }
+
+    function roleLabel(staff: Staff) {
+        if (staff.is_admin && staff.is_worker) return 'Admin + Trabajador'
+        if (staff.is_admin) return 'Admin'
+        if (staff.is_worker) return 'Trabajador'
+        return 'Sin rol'
+    }
+
+    function remainingActiveAdmins(excludingId?: string) {
+        return staffList.filter(
+            (staff) => staff.is_admin && staff.is_active && staff.id !== excludingId
+        ).length
+    }
+
+    async function deleteStaff(staff: Staff) {
+        if (staff.is_admin && remainingActiveAdmins(staff.id) === 0) {
+            notify('No se puede eliminar', 'Debe quedar al menos un administrador activo.', 'danger')
+            return
+        }
+
+        askConfirm({
+            title: 'Eliminar trabajador',
+            message: `${staff.full_name} perderá acceso al panel y ya no podrá recibir citas nuevas.`,
+            tone: 'danger',
+            onConfirm: async () => {
+                const { error } = await supabase.from('staff').delete().eq('id', staff.id)
+
+                if (error) {
+                    notify('No se pudo eliminar', 'Intenta nuevamente.', 'danger')
+                    return
+                }
+
+                await reload()
+                notify('Trabajador eliminado', 'El acceso fue revocado correctamente.', 'success')
+            },
+        })
+    }
+
+    return (
+        <section className="animate-fade-in">
+            <SectionHeader
+                eyebrow="Equipo"
+                title="Trabajadores y roles"
+                description="Administra quién puede entrar al panel, con qué rol, y quién tiene agenda propia."
+                action={
+                    <button onClick={openCreateModal} className="btn-primary">
+                        + Nuevo trabajador
+                    </button>
+                }
+            />
+
+            <DataTable
+                headers={['Nombre', 'Rol', 'Estado', 'Acciones']}
+                rows={staffList.map((staff) => [
+                    <div key="name">
+                        <p className="font-semibold">
+                            {staff.full_name}
+                            {staff.id === currentStaff?.id && (
+                                <span className="ml-2 text-xs text-[var(--app-muted)]">(tú)</span>
+                            )}
+                        </p>
+                        {staff.phone && (
+                            <p className="mt-1 text-xs text-[var(--app-muted)]">{staff.phone}</p>
+                        )}
+                    </div>,
+                    roleLabel(staff),
+                    <ActiveBadge key="active" active={staff.is_active} />,
+                    <RowActions key="actions">
+                        <AdminButton onClick={() => openEditModal(staff)}>Editar</AdminButton>
+                        <AdminButton tone="danger" onClick={() => deleteStaff(staff)}>
+                            Eliminar
+                        </AdminButton>
+                    </RowActions>,
+                ])}
+            />
+
+            <div className="mt-6 grid gap-3 lg:hidden">
+                {staffList.map((staff) => (
+                    <AdminCard key={staff.id}>
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <p className="truncate text-lg font-semibold">{staff.full_name}</p>
+                                <p className="mt-1 text-sm text-[var(--app-muted)]">{roleLabel(staff)}</p>
+                            </div>
+                            <ActiveBadge active={staff.is_active} />
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                            <AdminButton primary full onClick={() => openEditModal(staff)}>
+                                Editar
+                            </AdminButton>
+                            <AdminButton tone="danger" full onClick={() => deleteStaff(staff)}>
+                                Eliminar
+                            </AdminButton>
+                        </div>
+                    </AdminCard>
+                ))}
+            </div>
+
+            <EmptyState show={staffList.length === 0} text="No hay trabajadores creados." />
+
+            {modalOpen && (
+                <StaffFormModal
+                    staff={editingStaff}
+                    remainingActiveAdmins={remainingActiveAdmins}
+                    onClose={() => setModalOpen(false)}
+                    onSaved={async () => {
+                        setModalOpen(false)
+                        await reload()
+                    }}
+                />
+            )}
+        </section>
+    )
+}
+
+function StaffFormModal({
+    staff,
+    remainingActiveAdmins,
+    onClose,
+    onSaved,
+}: {
+    staff: Staff | null
+    remainingActiveAdmins: (excludingId?: string) => number
+    onClose: () => void
+    onSaved: AsyncVoid
+}) {
+    const [fullName, setFullName] = useState(staff?.full_name || '')
+    const [authUserId, setAuthUserId] = useState(staff?.auth_user_id || '')
+    const [phone, setPhone] = useState(staff?.phone || '')
+    const [telegramChatId, setTelegramChatId] = useState(staff?.telegram_chat_id || '')
+    const [avatarUrl, setAvatarUrl] = useState(staff?.avatar_url || '')
+    const [isAdminRole, setIsAdminRole] = useState(staff?.is_admin ?? false)
+    const [isWorkerRole, setIsWorkerRole] = useState(staff?.is_worker ?? false)
+    const [isActive, setIsActive] = useState(staff?.is_active ?? true)
+    const [sortOrder, setSortOrder] = useState(staff?.sort_order ?? 0)
+    const [saving, setSaving] = useState(false)
+    const [errorMsg, setErrorMsg] = useState('')
+
+    const isEditing = Boolean(staff?.id)
+
+    async function saveStaff() {
+        if (!fullName.trim()) {
+            setErrorMsg('El nombre es obligatorio.')
+            return
+        }
+
+        if (!authUserId.trim()) {
+            setErrorMsg('El ID de usuario de Supabase Auth es obligatorio.')
+            return
+        }
+
+        if (!isAdminRole && !isWorkerRole) {
+            setErrorMsg('Debe ser administrador, trabajador, o ambos.')
+            return
+        }
+
+        const losesAdmin = Boolean(staff?.is_admin) && (!isAdminRole || !isActive)
+
+        if (staff && losesAdmin && remainingActiveAdmins(staff.id) === 0) {
+            setErrorMsg('Debe quedar al menos un administrador activo.')
+            return
+        }
+
+        setSaving(true)
+        setErrorMsg('')
+
+        const payload = {
+            full_name: fullName.trim(),
+            auth_user_id: authUserId.trim(),
+            phone: phone.trim() || null,
+            telegram_chat_id: telegramChatId.trim() || null,
+            avatar_url: avatarUrl.trim() || null,
+            is_admin: isAdminRole,
+            is_worker: isWorkerRole,
+            is_active: isActive,
+            sort_order: Number(sortOrder || 0),
+        }
+
+        const { error } = isEditing && staff
+            ? await supabase.from('staff').update(payload).eq('id', staff.id)
+            : await supabase.from('staff').insert(payload)
+
+        setSaving(false)
+
+        if (error) {
+            setErrorMsg(error.message)
+            return
+        }
+
+        await onSaved()
+    }
+
+    return (
+        <AdminModal
+            eyebrow={isEditing ? 'Editar trabajador' : 'Nuevo trabajador'}
+            title={isEditing ? staff?.full_name || 'Editar trabajador' : 'Crear trabajador'}
+            onClose={onClose}
+            size="lg"
+            footer={
+                <ModalFooter
+                    onCancel={onClose}
+                    onConfirm={saveStaff}
+                    confirmText={saving ? 'Guardando...' : 'Guardar'}
+                    disabled={saving}
+                />
+            }
+        >
+            <div className="grid gap-6 lg:grid-cols-[1fr_180px]">
+                <div className="space-y-4">
+                    <FieldLabel label="Nombre completo">
+                        <input
+                            value={fullName}
+                            onChange={(event) => setFullName(event.target.value)}
+                            className="admin-input"
+                            placeholder="Ej. Roberto Santana"
+                        />
+                    </FieldLabel>
+
+                    <div>
+                        <FieldLabel label="ID de usuario de Supabase Auth">
+                            <input
+                                value={authUserId}
+                                onChange={(event) => setAuthUserId(event.target.value)}
+                                className="admin-input disabled:opacity-50"
+                                placeholder="UUID de Authentication → Users"
+                                disabled={isEditing}
+                            />
+                        </FieldLabel>
+                        <p className="mt-2 text-xs text-[var(--app-muted)]">
+                            Búscalo en Supabase → Authentication → Users → copiar UID. La cuenta debe
+                            existir antes de crear aquí el perfil (los usuarios no se registran desde la web).
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <FieldLabel label="Teléfono">
+                            <input
+                                value={phone}
+                                onChange={(event) => setPhone(event.target.value)}
+                                className="admin-input"
+                            />
+                        </FieldLabel>
+
+                        <FieldLabel label="Orden">
+                            <input
+                                type="number"
+                                value={sortOrder}
+                                onChange={(event) => setSortOrder(Number(event.target.value))}
+                                className="admin-input"
+                            />
+                        </FieldLabel>
+                    </div>
+
+                    <div>
+                        <FieldLabel label="Chat ID de Telegram">
+                            <input
+                                value={telegramChatId}
+                                onChange={(event) => setTelegramChatId(event.target.value)}
+                                className="admin-input"
+                                placeholder="Ej. 123456789"
+                            />
+                        </FieldLabel>
+                        <p className="mt-2 text-xs text-[var(--app-muted)]">
+                            Ahí llegan las notificaciones de citas nuevas y canceladas de este
+                            trabajador. Para obtenerlo: que le escriba cualquier mensaje al bot de
+                            Telegram del negocio, y luego abre en el navegador
+                            https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates (usando el
+                            TELEGRAM_BOT_TOKEN configurado) — ahí aparece su "chat":{'{'}"id": ...{'}'}.
+                            Si se deja vacío, sus notificaciones caen en el chat del administrador.
+                        </p>
+                    </div>
+
+                    <FieldLabel label="URL de avatar">
+                        <input
+                            value={avatarUrl}
+                            onChange={(event) => setAvatarUrl(event.target.value)}
+                            className="admin-input"
+                            placeholder="https://..."
+                        />
+                    </FieldLabel>
+
+                    <ToggleField
+                        label="Es administrador"
+                        description="Acceso total al panel: citas, servicios, horarios, ajustes y equipo."
+                        checked={isAdminRole}
+                        onChange={setIsAdminRole}
+                    />
+
+                    <ToggleField
+                        label="Es trabajador reservable"
+                        description="Aparece en la reserva pública y tiene su propia agenda."
+                        checked={isWorkerRole}
+                        onChange={setIsWorkerRole}
+                    />
+
+                    <ToggleField
+                        label="Activo"
+                        description="Si está desactivado, pierde acceso al panel y no aparece en la reserva pública."
+                        checked={isActive}
+                        onChange={setIsActive}
+                    />
+
+                    <ErrorMessage message={errorMsg} />
+                </div>
+
+                <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--app-muted)]">
+                        Vista previa
+                    </p>
+                    <div className="border border-white/10 bg-white/[0.04] p-4 text-center">
+                        {avatarUrl ? (
+                            <img
+                                src={avatarUrl}
+                                alt={fullName}
+                                className="mx-auto h-20 w-20 rounded-full object-cover"
+                            />
+                        ) : (
+                            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-white/10">
+                                <ImageIcon size={24} className="text-[var(--app-muted)]" />
+                            </div>
+                        )}
+                        <p className="mt-3 truncate text-sm font-semibold">{fullName || 'Nombre'}</p>
+                    </div>
+                </div>
+            </div>
+        </AdminModal>
     )
 }
 
@@ -2269,29 +2800,6 @@ function SettingsSection({
                         />
                     </div>
                 </AdminPanel>
-
-                <AdminPanel
-                    title="Próximas funciones"
-                    description="Opciones preparadas para versiones futuras."
-                >
-                    <div className="p-5">
-                        <label className="flex items-center justify-between gap-4 border border-white/10 bg-white/[0.04] px-4 py-4 opacity-60">
-                            <div>
-                                <p className="text-sm font-semibold">
-                                    Varios trabajadores
-                                    <span className="ml-2 border border-[var(--brand)] px-2 py-0.5 text-[10px] uppercase text-[var(--brand)]">
-                                        Pronto
-                                    </span>
-                                </p>
-                                <p className="mt-1 text-xs text-[var(--app-muted)]">
-                                    Permitirá asignar citas a barberos o profesionales diferentes.
-                                </p>
-                            </div>
-
-                            <input type="checkbox" disabled />
-                        </label>
-                    </div>
-                </AdminPanel>
             </div>
 
             <div className="mt-6">
@@ -2356,77 +2864,31 @@ function RescheduleModal({
             return
         }
 
-        const dayOfWeek = getDayOfWeek(date)
-
-        const { data: dayOff } = await supabase
-            .from('days_off')
-            .select('*')
-            .eq('date', date)
-            .maybeSingle()
-
-        if (dayOff) {
-            setMessage(`Este día no está disponible. Motivo: ${dayOff.reason}`)
+        if (!appointment.worker_id) {
+            setMessage('Esta cita no tiene un barbero asignado y no se puede reagendar.')
             setLoadingSlots(false)
             return
         }
 
-        const [rulesResult, breaksResult, appointmentsResult] = await Promise.all([
-            supabase
-                .from('availability_rules')
-                .select('*')
-                .eq('day_of_week', dayOfWeek)
-                .eq('is_active', true),
-            supabase.from('breaks').select('*').eq('date', date).eq('is_active', true),
-            supabase
-                .from('appointments')
-                .select('*')
-                .eq('date', date)
-                .in('status', ['pending', 'confirmed']),
-        ])
+        const result = await getAvailableSlots(date, duration, appointment.worker_id, appointment.id)
 
-        const rules = rulesResult.data || []
-
-        if (rules.length === 0) {
-            setMessage('No trabajamos este día.')
-            setLoadingSlots(false)
-            return
-        }
-
-        const allSlots = rules.flatMap((rule) =>
-            generateSlots(String(rule.start_time).slice(0, 5), String(rule.end_time).slice(0, 5), duration)
-        )
-
-        const available = allSlots.filter((slot) => {
-            if (isPastSlot(date, slot)) return false
-
-            const slotEnd = addMinutes(slot, duration)
-            const overlapsBreak = (breaksResult.data || []).some((breakItem) =>
-                rangesOverlap(
-                    slot,
-                    slotEnd,
-                    String(breakItem.start_time).slice(0, 5),
-                    String(breakItem.end_time).slice(0, 5)
-                )
-            )
-            const overlapsAppointment = (appointmentsResult.data || []).some((reservedAppointment) => {
-                if (reservedAppointment.id === appointment.id) return false
-
-                return rangesOverlap(
-                    slot,
-                    slotEnd,
-                    String(reservedAppointment.start_time).slice(0, 5),
-                    String(reservedAppointment.end_time).slice(0, 5)
-                )
-            })
-
-            return !overlapsBreak && !overlapsAppointment
-        })
-
-        const uniqueAvailable = [...new Set(available)].sort()
-        setSlots(uniqueAvailable)
-
-        if (uniqueAvailable.length === 0) {
-            setMessage('No hay horarios disponibles para esta fecha.')
+        switch (result.status) {
+            case 'invalid-duration':
+                setMessage('Este servicio no tiene una duración válida.')
+                break
+            case 'day-off':
+                setMessage(`Este día no está disponible. Motivo: ${result.reason}`)
+                break
+            case 'error':
+                setMessage('Error cargando horarios.')
+                break
+            case 'closed':
+                setMessage('No trabajamos este día.')
+                break
+            case 'ok':
+                setSlots(result.slots)
+                if (result.slots.length === 0) setMessage('No hay horarios disponibles para esta fecha.')
+                break
         }
 
         setLoadingSlots(false)
@@ -2745,6 +3207,7 @@ function BreakFormModal({
         .from('appointments')
         .select('*')
         .eq('date', form.date)
+        .eq('worker_id', form.worker_id)
         .in('status', ['pending', 'confirmed'])
 
     if (appointmentsError) {
@@ -2765,6 +3228,7 @@ function BreakFormModal({
         setSaving(true)
 
         const payload = {
+            worker_id: form.worker_id,
             name: form.name.trim(),
             date: form.date,
             start_time: startTime,

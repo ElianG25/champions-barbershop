@@ -20,6 +20,13 @@ import {
   translateReview,
   translateService,
 } from '@/lib/landingTranslations'
+import type {
+  BusinessSettings,
+  GalleryImage,
+  GoogleReview,
+  Product,
+  Service,
+} from '@/types/database'
 
 export default async function Home({
   searchParams,
@@ -129,16 +136,19 @@ export default async function Home({
     },
   }
 
-  const { data: business } = await supabase
+  const { data: businessRaw } = await supabase
     .from('business_settings')
     .select('*')
     .single()
+
+  const business = businessRaw as BusinessSettings | null
 
   const { data: services } = await supabase
     .from('services')
     .select('*')
     .eq('is_active', true)
     .order('price', { ascending: true })
+    .returns<Service[]>()
 
   const { data: gallery } = await supabase
     .from('gallery_images')
@@ -146,6 +156,7 @@ export default async function Home({
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
     .limit(6)
+    .returns<GalleryImage[]>()
 
   const { data: products } = await supabase
     .from('products')
@@ -153,6 +164,7 @@ export default async function Home({
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
     .limit(4)
+    .returns<Product[]>()
 
   const { data: reviews } = await supabase
     .from('google_reviews')
@@ -162,6 +174,7 @@ export default async function Home({
     .order('rating', { ascending: false })
     .order('sort_order', { ascending: true })
     .limit(25)
+    .returns<GoogleReview[]>()
 
   const DEVELOPER_WHATSAPP = '18296055347'
   const GOOGLE_REVIEW_URL =
@@ -180,28 +193,29 @@ export default async function Home({
 
   const langQuery = language === 'en' ? '?lang=en' : ''
   const reservarHref = `/reservar${langQuery}`
+  const currency = business?.currency || 'EUR'
 
-  function serviceName(service: any) {
+  function serviceName(service: Service) {
     return language === 'en' ? translateService(service).name : service.name
   }
 
-  function serviceDescription(service: any) {
+  function serviceDescription(service: Service) {
     return language === 'en'
       ? translateService(service).description
       : service.description
   }
 
-  function productName(product: any) {
+  function productName(product: Product) {
     return language === 'en' ? translateProduct(product).name : product.name
   }
 
-  function productDescription(product: any) {
+  function productDescription(product: Product) {
     return language === 'en'
       ? translateProduct(product).description
       : product.description
   }
 
-  function reviewComment(review: any) {
+  function reviewComment(review: GoogleReview) {
     return language === 'en' ? translateReview(review.comment) : review.comment
   }
 
@@ -390,7 +404,7 @@ export default async function Home({
 
                     <div className="shrink-0 text-right">
                       <p className="text-lg font-semibold text-[var(--brand)]">
-                        {formatCurrency(Number(service.price), business?.currency || 'EUR')}
+                        {formatCurrency(Number(service.price), currency)}
                       </p>
                       <p className="mt-1 text-xs text-[var(--app-muted)]">
                         {service.duration_minutes} min
@@ -454,7 +468,7 @@ export default async function Home({
                 </p>
 
                 <p className="mt-4 font-semibold text-[var(--brand)]">
-                  {formatCurrency(Number(product.price || 0), business?.currency || 'EUR')}
+                  {formatCurrency(Number(product.price || 0), currency)}
                 </p>
               </article>
             ))}
