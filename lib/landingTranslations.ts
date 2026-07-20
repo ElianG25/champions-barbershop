@@ -21,22 +21,17 @@ const SERVICE_TRANSLATIONS: Record<string, { name: string; description: string }
   },
 }
 
-const PRODUCT_TRANSLATIONS: Record<string, { name: string; description: string }> = {}
-
-const REVIEW_TRANSLATIONS: Record<string, string> = {}
-
+// No hay un servicio de traducción real conectado: los nombres y
+// descripciones de productos y el texto de las reseñas se muestran tal cual
+// los escribió el negocio (en español) también en la versión en inglés del
+// sitio. Si en el futuro se agrega traducción automática o campos editables
+// en el admin (ej. name_en/description_en), esta es la función a actualizar.
 export function translateBusinessDescription(description: string | null | undefined) {
   if (!description) {
     return 'Champions Barbershop combines technique, precision and a polished experience so you can book without calls or waiting.'
   }
 
   return description
-    .replaceAll('Barbería premium', 'Premium barbershop')
-    .replaceAll('Barcelona especializada en cortes modernos, degradados, barba y estilo masculino', 'in Barcelona specialized in modern haircuts, fades, beard grooming and men’s style')
-    .replaceAll('cortes modernos', 'modern haircuts')
-    .replaceAll('degradados', 'fades')
-    .replaceAll('barba', 'beard grooming')
-    .replaceAll('estilo masculino', 'men’s style')
 }
 
 export function translateService(service: {
@@ -60,11 +55,6 @@ export function translateProduct(product: {
   name: string
   description?: string | null
 }) {
-  const key = String(product.name || '').trim().toLowerCase()
-  const found = PRODUCT_TRANSLATIONS[key]
-
-  if (found) return found
-
   return {
     name: product.name,
     description:
@@ -74,8 +64,5 @@ export function translateProduct(product: {
 }
 
 export function translateReview(comment: string | null | undefined) {
-  if (!comment) return ''
-
-  const key = comment.trim().toLowerCase()
-  return REVIEW_TRANSLATIONS[key] || comment
+  return comment || ''
 }
