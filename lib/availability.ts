@@ -58,8 +58,8 @@ export async function getAvailableSlots(
   const { data: breaks } = await supabase
     .from('breaks')
     .select('*')
-    .eq('date', date)
     .eq('worker_id', workerId)
+    .or(`date.eq.${date},day_of_week.eq.${dayOfWeek}`)
     .returns<Break[]>()
 
   const activeBreaks = (breaks || []).filter((b) => b.is_active !== false)

@@ -104,7 +104,9 @@ export interface Break {
   id: string
   worker_id: string
   name: string | null
-  date: string
+  date: string | null
+  day_of_week: number | null
+  group_id: string | null
   start_time: string
   end_time: string
   is_active: boolean

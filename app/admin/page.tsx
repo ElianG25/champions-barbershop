@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import {
     addMinutes,
+    getDayOfWeek,
     isPastDate,
     rangesOverlap,
 } from '@/lib/booking'
@@ -89,6 +90,7 @@ const SECTION_TITLES: Record<Section, string> = {
 }
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const WEEK_DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados', 'domingos']
 
 function getTimeGreeting() {
     const hour = new Date().getHours()
@@ -96,6 +98,40 @@ function getTimeGreeting() {
     if (hour < 12) return 'Buenos días'
     if (hour < 19) return 'Buenas tardes'
     return 'Buenas noches'
+}
+
+function recurringBreakLabel(days: number[]) {
+    const sorted = [...days].sort((a, b) => a - b)
+
+    if (sorted.length === 7) return 'Todos los días'
+    if (sorted.length === 5 && sorted.every((day, index) => day === index + 1)) {
+        return 'Lunes a viernes'
+    }
+    if (sorted.length === 1) return `Todos los ${WEEK_DAY_NAMES[sorted[0] - 1]}`
+
+    return sorted.map((day) => WEEK_DAYS[day - 1]).join(', ')
+}
+
+function groupBreaks(breaks: any[]) {
+    const singles = breaks.filter((item) => item.date)
+    const recurringByGroup = new Map<string, any[]>()
+
+    breaks
+        .filter((item) => !item.date)
+        .forEach((item) => {
+            const key = item.group_id || item.id
+            const existing = recurringByGroup.get(key) || []
+            existing.push(item)
+            recurringByGroup.set(key, existing)
+        })
+
+    const recurringGroups = Array.from(recurringByGroup.entries()).map(([groupId, rows]) => ({
+        groupId,
+        rows,
+        days: rows.map((row) => row.day_of_week),
+    }))
+
+    return { singles, recurringGroups }
 }
 
 export default function AdminPage() {
@@ -1996,6 +2032,7 @@ function ScheduleSection({
     const [newDayOffScope, setNewDayOffScope] = useState<'all' | string>('all')
     const [loading, setLoading] = useState(false)
     const [editingBreak, setEditingBreak] = useState<any | null>(null)
+    const [breakModalOpen, setBreakModalOpen] = useState(false)
     const [selectedWorkerId, setSelectedWorkerId] = useState('')
 
     useEffect(() => {
@@ -2019,6 +2056,7 @@ function ScheduleSection({
     }, [isAdmin, currentStaff])
 
     const workerAvailability = availability.filter((rule) => rule.worker_id === selectedWorkerId)
+    const breakGroups = groupBreaks(breaks)
 
     async function loadAvailabilityExtras() {
         const today = new Date().toISOString().split('T')[0]
@@ -2212,17 +2250,29 @@ function ScheduleSection({
     }
 
     function createBreak() {
-        const today = new Date().toISOString().split('T')[0]
+        setEditingBreak(null)
+        setBreakModalOpen(true)
+    }
+
+    function editSingleBreak(breakItem: any) {
+        setEditingBreak({ kind: 'single', ...breakItem })
+        setBreakModalOpen(true)
+    }
+
+    function editRecurringBreak(group: { groupId: string; rows: any[]; days: number[] }) {
+        const sample = group.rows[0]
 
         setEditingBreak({
-            id: null,
-            worker_id: selectedWorkerId,
-            name: 'Descanso',
-            date: today,
-            start_time: '14:00',
-            end_time: '15:00',
-            is_active: true,
+            kind: 'recurring',
+            groupId: group.groupId,
+            worker_id: sample.worker_id,
+            name: sample.name,
+            start_time: sample.start_time,
+            end_time: sample.end_time,
+            is_active: sample.is_active,
+            days: group.days,
         })
+        setBreakModalOpen(true)
     }
 
     async function deleteBreak(id: string) {
@@ -2240,6 +2290,25 @@ function ScheduleSection({
 
                 await loadAvailabilityExtras()
                 notify('Bloqueo eliminado', 'El horario fue habilitado nuevamente.', 'success')
+            },
+        })
+    }
+
+    async function deleteRecurringGroup(groupId: string) {
+        askConfirm({
+            title: 'Eliminar bloqueo recurrente',
+            message: 'Dejará de repetirse en todos los días configurados.',
+            tone: 'danger',
+            onConfirm: async () => {
+                const { error } = await supabase.from('breaks').delete().eq('group_id', groupId)
+
+                if (error) {
+                    notify('No se pudo eliminar el bloqueo', 'Intenta nuevamente.', 'danger')
+                    return
+                }
+
+                await loadAvailabilityExtras()
+                notify('Bloqueo eliminado', 'Dejó de repetirse.', 'success')
             },
         })
     }
@@ -2473,7 +2542,40 @@ function ScheduleSection({
                         }
                     >
                         <div className="divide-y divide-white/10">
-                            {breaks.map((breakItem) => (
+                            {breakGroups.recurringGroups.map((group) => (
+                                <div key={group.groupId} className="p-5">
+                                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                                        <div>
+                                            <p className="font-semibold">{group.rows[0].name}</p>
+
+                                            <p className="mt-1 text-sm text-[var(--app-muted)]">
+                                                <span className="text-[var(--brand)]">
+                                                    {recurringBreakLabel(group.days)}
+                                                </span>{' '}
+                                                ·{' '}
+                                                {formatTime(group.rows[0].start_time, business?.time_format || '24h')} -{' '}
+                                                {formatTime(group.rows[0].end_time, business?.time_format || '24h')}
+                                            </p>
+
+                                            <p className="mt-2 text-xs text-[var(--app-muted)]">
+                                                {group.rows[0].is_active ? 'Activo' : 'Inactivo'}
+                                            </p>
+                                        </div>
+
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <AdminButton onClick={() => editRecurringBreak(group)}>
+                                                Editar
+                                            </AdminButton>
+
+                                            <AdminButton tone="danger" onClick={() => deleteRecurringGroup(group.groupId)}>
+                                                Eliminar
+                                            </AdminButton>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {breakGroups.singles.map((breakItem) => (
                                 <div key={breakItem.id} className="p-5">
                                     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                                         <div>
@@ -2491,7 +2593,7 @@ function ScheduleSection({
                                         </div>
 
                                         <div className="grid gap-2 sm:grid-cols-2">
-                                            <AdminButton onClick={() => setEditingBreak(breakItem)}>
+                                            <AdminButton onClick={() => editSingleBreak(breakItem)}>
                                                 Editar
                                             </AdminButton>
 
@@ -2508,12 +2610,17 @@ function ScheduleSection({
                             )}
                         </div>
 
-                        {editingBreak && (
+                        {breakModalOpen && (
                             <BreakFormModal
                                 item={editingBreak}
+                                workerId={selectedWorkerId}
                                 business={business}
-                                onClose={() => setEditingBreak(null)}
+                                onClose={() => {
+                                    setBreakModalOpen(false)
+                                    setEditingBreak(null)
+                                }}
                                 onSaved={async () => {
+                                    setBreakModalOpen(false)
                                     setEditingBreak(null)
                                     await loadAvailabilityExtras()
                                     await reload()
@@ -3501,13 +3608,15 @@ const ADMIN_TIME_OPTIONS = Array.from({ length: 48 }).map((_, index) => {
 
 function BreakFormModal({
     item,
+    workerId,
     business,
     onClose,
     onSaved,
     notify,
     askConfirm,
 }: {
-    item: any
+    item: any | null
+    workerId: string
     business: any
     onClose: () => void
     onSaved: () => Promise<void>
@@ -3519,125 +3628,232 @@ function BreakFormModal({
         onConfirm: () => void | Promise<void>
     }) => void
 }) {
-    const [form, setForm] = useState(item)
-    const [saving, setSaving] = useState(false)
-    const isEditing = Boolean(item.id)
+    const isEditing = Boolean(item)
 
-    function patchForm(patch: any) {
-        setForm((prev: any) => ({ ...prev, ...patch }))
+    const [breakType, setBreakType] = useState<'single' | 'recurring' | null>(
+        isEditing ? (item.kind === 'recurring' ? 'recurring' : 'single') : null
+    )
+    const [name, setName] = useState(item?.name || 'Descanso')
+    const [date, setDate] = useState(
+        item?.kind === 'single' ? item.date : new Date().toISOString().split('T')[0]
+    )
+    const [selectedDays, setSelectedDays] = useState<number[]>(
+        item?.kind === 'recurring' ? item.days : []
+    )
+    const [startTime, setStartTime] = useState(String(item?.start_time || '14:00').slice(0, 5))
+    const [endTime, setEndTime] = useState(String(item?.end_time || '15:00').slice(0, 5))
+    const [isActive, setIsActive] = useState(item?.is_active ?? true)
+    const [saving, setSaving] = useState(false)
+
+    function toggleDay(day: number) {
+        setSelectedDays((prev) =>
+            prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
+        )
     }
 
     async function saveBreak() {
-    if (!form.date || !form.name?.trim() || !form.start_time || !form.end_time) {
-        notify('Campos incompletos', 'Completa fecha, motivo y horario.', 'danger')
-        return
-    }
+        if (!breakType) return
 
-    const startTime = String(form.start_time).slice(0, 5)
-    const endTime = String(form.end_time).slice(0, 5)
-
-    if (startTime >= endTime) {
-        notify('Horario inválido', 'La hora de inicio debe ser menor que la hora final.', 'danger')
-        return
-    }
-
-    const { data: affectedAppointments, error: appointmentsError } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('date', form.date)
-        .eq('worker_id', form.worker_id)
-        .in('status', ['pending', 'confirmed'])
-
-    if (appointmentsError) {
-        notify('No se pudieron validar las citas afectadas', 'Intenta nuevamente.', 'danger')
-        return
-    }
-
-    const appointmentsToCancel = (affectedAppointments || []).filter((appointment) =>
-        rangesOverlap(
-            startTime,
-            endTime,
-            String(appointment.start_time).slice(0, 5),
-            String(appointment.end_time).slice(0, 5)
-        )
-    )
-
-    async function runSave() {
-        setSaving(true)
-
-        const payload = {
-            worker_id: form.worker_id,
-            name: form.name.trim(),
-            date: form.date,
-            start_time: startTime,
-            end_time: endTime,
-            is_active: Boolean(form.is_active),
-        }
-
-        const { error } = isEditing
-            ? await supabase.from('breaks').update(payload).eq('id', form.id)
-            : await supabase.from('breaks').insert(payload)
-
-        if (error) {
-            setSaving(false)
-            notify('No se pudo guardar el bloqueo', error.message, 'danger')
+        if (!name.trim() || !startTime || !endTime) {
+            notify('Campos incompletos', 'Completa el motivo y el horario.', 'danger')
             return
         }
 
-        if (form.is_active && appointmentsToCancel.length > 0) {
-            const { error: cancelError } = await supabase
-                .from('appointments')
-                .update({
-                    status: 'cancelled',
-                    cancelled_at: new Date().toISOString(),
-                })
-                .in('id', appointmentsToCancel.map((appointment) => appointment.id))
-                .in('status', ['pending', 'confirmed'])
-
-            if (cancelError) {
-                setSaving(false)
-                notify(
-                    'Bloqueo guardado, pero no se cancelaron las citas',
-                    cancelError.message,
-                    'danger'
-                )
-                return
-            }
+        if (startTime >= endTime) {
+            notify('Horario inválido', 'La hora de inicio debe ser menor que la hora final.', 'danger')
+            return
         }
 
-        setSaving(false)
+        if (breakType === 'single' && !date) {
+            notify('Falta la fecha', 'Selecciona un día para el bloqueo.', 'danger')
+            return
+        }
 
-        notify(
-            isEditing ? 'Bloqueo actualizado' : 'Bloqueo creado',
-            appointmentsToCancel.length > 0
-                ? 'Se guardó el bloqueo y se cancelaron las citas afectadas.'
-                : 'Los cambios fueron guardados correctamente.',
-            'success'
-        )
+        if (breakType === 'recurring' && selectedDays.length === 0) {
+            notify('Faltan los días', 'Selecciona al menos un día de la semana.', 'danger')
+            return
+        }
 
-        await onSaved()
-    }
+        let affectedQuery = supabase
+            .from('appointments')
+            .select('*')
+            .eq('worker_id', workerId)
+            .in('status', ['pending', 'confirmed'])
 
-    if (form.is_active && appointmentsToCancel.length > 0) {
-        onClose()
+        affectedQuery =
+            breakType === 'single'
+                ? affectedQuery.eq('date', date)
+                : affectedQuery.gte('date', new Date().toISOString().split('T')[0])
 
-        askConfirm({
-            title: 'Bloqueo con citas existentes',
-            message: `Este bloqueo afecta ${appointmentsToCancel.length} cita(s). Si continúas, serán canceladas.`,
-            tone: 'danger',
-            onConfirm: runSave,
+        const { data: candidateAppointments, error: appointmentsError } = await affectedQuery
+
+        if (appointmentsError) {
+            notify('No se pudieron validar las citas afectadas', 'Intenta nuevamente.', 'danger')
+            return
+        }
+
+        const appointmentsToCancel = (candidateAppointments || []).filter((appointment) => {
+            const overlaps = rangesOverlap(
+                startTime,
+                endTime,
+                String(appointment.start_time).slice(0, 5),
+                String(appointment.end_time).slice(0, 5)
+            )
+
+            if (!overlaps) return false
+
+            return breakType === 'single' || selectedDays.includes(getDayOfWeek(appointment.date))
         })
 
-        return
+        async function runSave() {
+            setSaving(true)
+
+            if (breakType === 'single') {
+                const payload = {
+                    worker_id: workerId,
+                    name: name.trim(),
+                    date,
+                    day_of_week: null,
+                    group_id: null,
+                    start_time: startTime,
+                    end_time: endTime,
+                    is_active: isActive,
+                }
+
+                const { error } = isEditing
+                    ? await supabase.from('breaks').update(payload).eq('id', item.id)
+                    : await supabase.from('breaks').insert(payload)
+
+                if (error) {
+                    setSaving(false)
+                    notify('No se pudo guardar el bloqueo', error.message, 'danger')
+                    return
+                }
+            } else {
+                const groupId = isEditing ? item.groupId : window.crypto.randomUUID()
+
+                if (isEditing) {
+                    const { error: deleteError } = await supabase
+                        .from('breaks')
+                        .delete()
+                        .eq('group_id', groupId)
+
+                    if (deleteError) {
+                        setSaving(false)
+                        notify('No se pudo guardar el bloqueo', deleteError.message, 'danger')
+                        return
+                    }
+                }
+
+                const rows = selectedDays.map((day) => ({
+                    worker_id: workerId,
+                    name: name.trim(),
+                    date: null,
+                    day_of_week: day,
+                    group_id: groupId,
+                    start_time: startTime,
+                    end_time: endTime,
+                    is_active: isActive,
+                }))
+
+                const { error } = await supabase.from('breaks').insert(rows)
+
+                if (error) {
+                    setSaving(false)
+                    notify('No se pudo guardar el bloqueo', error.message, 'danger')
+                    return
+                }
+            }
+
+            if (isActive && appointmentsToCancel.length > 0) {
+                const { error: cancelError } = await supabase
+                    .from('appointments')
+                    .update({
+                        status: 'cancelled',
+                        cancelled_at: new Date().toISOString(),
+                    })
+                    .in('id', appointmentsToCancel.map((appointment) => appointment.id))
+                    .in('status', ['pending', 'confirmed'])
+
+                if (cancelError) {
+                    setSaving(false)
+                    notify(
+                        'Bloqueo guardado, pero no se cancelaron las citas',
+                        cancelError.message,
+                        'danger'
+                    )
+                    return
+                }
+            }
+
+            setSaving(false)
+
+            notify(
+                isEditing ? 'Bloqueo actualizado' : 'Bloqueo creado',
+                appointmentsToCancel.length > 0
+                    ? 'Se guardó el bloqueo y se cancelaron las citas afectadas.'
+                    : 'Los cambios fueron guardados correctamente.',
+                'success'
+            )
+
+            await onSaved()
+        }
+
+        if (isActive && appointmentsToCancel.length > 0) {
+            onClose()
+
+            askConfirm({
+                title: 'Bloqueo con citas existentes',
+                message: `Este bloqueo afecta ${appointmentsToCancel.length} cita(s)${breakType === 'recurring' ? ' futuras' : ''
+                    }. Si continúas, serán canceladas.`,
+                tone: 'danger',
+                onConfirm: runSave,
+            })
+
+            return
+        }
+
+        await runSave()
     }
 
-    await runSave()
-}
+    if (!breakType) {
+        return (
+            <AdminModal eyebrow="Nuevo bloqueo" title="¿Qué tipo de bloqueo quieres crear?" onClose={onClose}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                        onClick={() => setBreakType('single')}
+                        className="border border-white/10 bg-[var(--app-surface)] p-5 text-left transition hover:border-[var(--brand)]"
+                    >
+                        <p className="font-semibold">Un día específico</p>
+                        <p className="mt-1 text-sm text-[var(--app-muted)]">
+                            Una ausencia o pausa puntual, en una sola fecha.
+                        </p>
+                    </button>
+
+                    <button
+                        onClick={() => setBreakType('recurring')}
+                        className="border border-white/10 bg-[var(--app-surface)] p-5 text-left transition hover:border-[var(--brand)]"
+                    >
+                        <p className="font-semibold">Recurrente</p>
+                        <p className="mt-1 text-sm text-[var(--app-muted)]">
+                            Se repite cada semana, como el almuerzo diario.
+                        </p>
+                    </button>
+                </div>
+            </AdminModal>
+        )
+    }
 
     return (
         <AdminModal
             eyebrow={isEditing ? 'Editar bloqueo' : 'Nuevo bloqueo'}
-            title={isEditing ? form.name || 'Bloqueo' : 'Crear bloqueo'}
+            title={
+                isEditing
+                    ? name || 'Bloqueo'
+                    : breakType === 'recurring'
+                        ? 'Bloqueo recurrente'
+                        : 'Bloqueo de un día'
+            }
             onClose={onClose}
             footer={
                 <ModalFooter
@@ -3649,18 +3865,56 @@ function BreakFormModal({
             }
         >
             <div className="space-y-6">
-                <FieldLabel label="Fecha">
-                    <DateSelector
-                        value={form.date}
-                        onChange={(date) => patchForm({ date })}
-                        days={30}
-                    />
-                </FieldLabel>
+                {breakType === 'single' ? (
+                    <FieldLabel label="Fecha">
+                        <DateSelector value={date} onChange={setDate} days={30} />
+                    </FieldLabel>
+                ) : (
+                    <FieldLabel label="Días de la semana">
+                        <div className="mb-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDays([1, 2, 3, 4, 5, 6, 7])}
+                                className="border border-white/10 px-3 py-1.5 text-xs font-semibold text-[var(--app-muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                            >
+                                Todos los días
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDays([1, 2, 3, 4, 5])}
+                                className="border border-white/10 px-3 py-1.5 text-xs font-semibold text-[var(--app-muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                            >
+                                Lunes a viernes
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-7 gap-2">
+                            {WEEK_DAYS.map((label, index) => {
+                                const day = index + 1
+                                const active = selectedDays.includes(day)
+
+                                return (
+                                    <button
+                                        key={day}
+                                        type="button"
+                                        onClick={() => toggleDay(day)}
+                                        className={`border py-2 text-xs font-semibold transition ${active
+                                            ? 'border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)]'
+                                            : 'border-white/10 text-[var(--app-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)]'
+                                            }`}
+                                    >
+                                        {label}
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </FieldLabel>
+                )}
 
                 <FieldLabel label="Motivo">
                     <input
-                        value={form.name || ''}
-                        onChange={(event) => patchForm({ name: event.target.value })}
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
                         placeholder="Almuerzo, ausencia, descanso..."
                         className="admin-input"
                     />
@@ -3669,9 +3923,9 @@ function BreakFormModal({
                 <div>
                     <FieldLabel label="Desde">
                         <TimeSelector
-                            value={String(form.start_time).slice(0, 5)}
+                            value={startTime}
                             options={ADMIN_TIME_OPTIONS}
-                            onChange={(start_time) => patchForm({ start_time })}
+                            onChange={setStartTime}
                             timeFormat={business?.time_format || '24h'}
                         />
                     </FieldLabel>
@@ -3680,9 +3934,9 @@ function BreakFormModal({
                 <div>
                     <FieldLabel label="Hasta">
                         <TimeSelector
-                            value={String(form.end_time).slice(0, 5)}
+                            value={endTime}
                             options={ADMIN_TIME_OPTIONS}
-                            onChange={(end_time) => patchForm({ end_time })}
+                            onChange={setEndTime}
                             timeFormat={business?.time_format || '24h'}
                         />
                     </FieldLabel>
@@ -3691,8 +3945,8 @@ function BreakFormModal({
                 <ToggleField
                     label="Bloqueo activo"
                     description="Si está activo, este horario no aparecerá disponible para reservas."
-                    checked={Boolean(form.is_active)}
-                    onChange={(is_active) => patchForm({ is_active })}
+                    checked={isActive}
+                    onChange={setIsActive}
                 />
             </div>
         </AdminModal>
