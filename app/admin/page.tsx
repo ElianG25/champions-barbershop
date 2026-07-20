@@ -26,6 +26,8 @@ import {
     Trash2,
     ImageIcon,
     Users,
+    MoreHorizontal,
+    X,
 } from 'lucide-react'
 import {
     clearAdminActivity,
@@ -59,6 +61,7 @@ type AppointmentFilter =
 type AsyncVoid = () => Promise<void>
 
 const WORKER_ALLOWED_SECTIONS: Section[] = ['home', 'appointments', 'schedule']
+const MOBILE_PRIMARY_SECTIONS: Section[] = ['home', 'appointments', 'schedule']
 
 const NAV_ITEMS: {
     id: Section
@@ -99,6 +102,7 @@ export default function AdminPage() {
     const [availability, setAvailability] = useState<any[]>([])
     const [rescheduleAppointment, setRescheduleAppointment] = useState<any>(null)
     const [appointmentFilter, setAppointmentFilter] = useState<AppointmentFilter>('today')
+    const [appointmentWorkerFilter, setAppointmentWorkerFilter] = useState('all')
     const [calendarOpen, setCalendarOpen] = useState(false)
     const [whatsappAppointment, setWhatsappAppointment] = useState<any>(null)
     const [products, setProducts] = useState<any[]>([])
@@ -162,6 +166,13 @@ export default function AdminPage() {
             })
         }
     }, [business])
+
+    useEffect(() => {
+        if (!currentStaff) return
+        if (!visibleNavItems.some((item) => item.id === section)) {
+            setSection('home')
+        }
+    }, [currentStaff, section, visibleNavItems])
 
     async function bootstrap() {
         const { data } = await supabase.auth.getUser()
@@ -387,6 +398,31 @@ export default function AdminPage() {
         }
     }, [appointments, services.length])
 
+    const workerStats = useMemo(() => {
+        const todayStr = new Date().toISOString().split('T')[0]
+
+        return staffList
+            .filter((staff) => staff.is_worker)
+            .map((staff) => {
+                const ownAppointments = appointments.filter(
+                    (appointment) => appointment.worker_id === staff.id
+                )
+
+                const todayCount = ownAppointments.filter(
+                    (appointment) => appointment.date === todayStr
+                ).length
+
+                const revenueToday = ownAppointments
+                    .filter(
+                        (appointment) =>
+                            appointment.status === 'completed' && appointment.date === todayStr
+                    )
+                    .reduce((sum, appointment) => sum + Number(appointment.services?.price || 0), 0)
+
+                return { worker: staff, todayCount, revenueToday }
+            })
+    }, [appointments, staffList])
+
     function getFilteredAppointments() {
         const today = new Date()
         const todayStr = today.toISOString().split('T')[0]
@@ -400,6 +436,10 @@ export default function AdminPage() {
         const weekEndStr = weekEnd.toISOString().split('T')[0]
 
         return appointments.filter((appointment) => {
+            if (appointmentWorkerFilter !== 'all' && appointment.worker_id !== appointmentWorkerFilter) {
+                return false
+            }
+
             if (appointmentFilter === 'today') return appointment.date === todayStr
             if (appointmentFilter === 'tomorrow') return appointment.date === tomorrowStr
             if (appointmentFilter === 'week') {
@@ -480,8 +520,10 @@ export default function AdminPage() {
                         {section === 'home' && (
                             <HomeSection
                                 stats={stats}
+                                workerStats={isAdmin ? workerStats : []}
                                 business={business}
                                 setSection={setSection}
+                                isAdmin={isAdmin}
                             />
                         )}
 
@@ -492,6 +534,10 @@ export default function AdminPage() {
                                 business={business}
                                 filter={appointmentFilter}
                                 setFilter={setAppointmentFilter}
+                                workerFilter={appointmentWorkerFilter}
+                                setWorkerFilter={setAppointmentWorkerFilter}
+                                staffList={staffList}
+                                isAdmin={isAdmin}
                                 updateAppointmentStatus={updateAppointmentStatus}
                                 onReschedule={setRescheduleAppointment}
                                 onOpenCalendar={() => setCalendarOpen(true)}
@@ -499,7 +545,7 @@ export default function AdminPage() {
                             />
                         )}
 
-                        {section === 'services' && (
+                        {section === 'services' && isAdmin && (
                             <ServicesSection
                                 services={services}
                                 reload={loadData}
@@ -509,7 +555,7 @@ export default function AdminPage() {
                             />
                         )}
 
-                        {section === 'products' && (
+                        {section === 'products' && isAdmin && (
                             <ProductsSection
                                 products={products}
                                 business={business}
@@ -543,7 +589,7 @@ export default function AdminPage() {
                             />
                         )}
 
-                        {section === 'settings' && (
+                        {section === 'settings' && isAdmin && (
                             <SettingsSection
                                 business={business}
                                 setBusiness={setBusiness}
@@ -725,8 +771,10 @@ function CalendarAppointmentsModal({
 
 function HomeSection({
     stats,
+    workerStats,
     business,
     setSection,
+    isAdmin,
 }: {
     stats: {
         today: number
@@ -739,8 +787,10 @@ function HomeSection({
         revenue15Days: number
         revenueMonth: number
     }
+    workerStats: { worker: Staff; todayCount: number; revenueToday: number }[]
     business: any
     setSection: (section: Section) => void
+    isAdmin: boolean
 }) {
     return (
         <section className="animate-fade-in">
@@ -788,6 +838,31 @@ function HomeSection({
                 </div>
             </div>
 
+            {workerStats.length > 0 && (
+                <div className="mt-6">
+                    <AdminPanel
+                        title="Desempeño por barbero"
+                        description="Citas de hoy e ingresos de hoy por trabajador."
+                    >
+                        <div className="grid gap-px overflow-hidden bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
+                            {workerStats.map(({ worker, todayCount, revenueToday }) => (
+                                <div key={worker.id} className="bg-[var(--app-surface)] p-5">
+                                    <p className="font-semibold">{worker.full_name}</p>
+                                    <p className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
+                                        {todayCount}
+                                    </p>
+                                    <p className="text-xs text-[var(--app-muted)]">citas hoy</p>
+                                    <p className="mt-3 font-semibold text-[var(--brand)]">
+                                        {formatCurrency(revenueToday, business?.currency || 'EUR')}
+                                    </p>
+                                    <p className="text-xs text-[var(--app-muted)]">ingresos hoy</p>
+                                </div>
+                            ))}
+                        </div>
+                    </AdminPanel>
+                </div>
+            )}
+
             <div className="mt-6 grid gap-4 lg:grid-cols-4">
                 <QuickAction
                     title="Citas"
@@ -795,20 +870,24 @@ function HomeSection({
                     onClick={() => setSection('appointments')}
                 />
                 <QuickAction
-                    title="Servicios"
-                    text="Edita precios, duración y disponibilidad."
-                    onClick={() => setSection('services')}
-                />
-                <QuickAction
                     title="Disponibilidad"
                     text="Gestiona horarios, descansos y días libres."
                     onClick={() => setSection('schedule')}
                 />
-                <QuickAction
-                    title="Productos"
-                    text="Gestiona productos visibles en la landing."
-                    onClick={() => setSection('products')}
-                />
+                {isAdmin && (
+                    <>
+                        <QuickAction
+                            title="Servicios"
+                            text="Edita precios, duración y disponibilidad."
+                            onClick={() => setSection('services')}
+                        />
+                        <QuickAction
+                            title="Productos"
+                            text="Gestiona productos visibles en la landing."
+                            onClick={() => setSection('products')}
+                        />
+                    </>
+                )}
             </div>
         </section>
     )
@@ -920,29 +999,82 @@ function MobileNav({
     setSection: (section: Section) => void
     items: typeof NAV_ITEMS
 }) {
+    const [moreOpen, setMoreOpen] = useState(false)
+
+    const primaryItems = items.filter((item) => MOBILE_PRIMARY_SECTIONS.includes(item.id))
+    const overflowItems = items.filter((item) => !MOBILE_PRIMARY_SECTIONS.includes(item.id))
+    const columns = overflowItems.length > 0 ? primaryItems.length + 1 : primaryItems.length
+
+    function goTo(sectionId: Section) {
+        setSection(sectionId)
+        setMoreOpen(false)
+    }
+
     return (
-        <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[var(--app-bg)]/95 px-2 py-2 backdrop-blur-xl lg:hidden">
-            <div
-                className="mx-auto grid max-w-lg gap-1"
-                style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
-            >
-                {items.map((item) => (
-                    <button
-                        key={item.id}
-                        onClick={() => setSection(item.id)}
-                        className={`px-2 py-3 text-[11px] font-semibold transition duration-200 active:scale-[0.98] ${section === item.id
-                            ? 'bg-[var(--brand)] text-[var(--app-bg)]'
-                            : 'text-[var(--app-muted)] hover:bg-white/[0.06]'
-                            }`}
-                    >
-                        <span className="flex flex-col items-center gap-1">
-                            {item.icon}
-                            {item.mobileLabel}
-                        </span>
-                    </button>
-                ))}
-            </div>
-        </nav>
+        <>
+            {moreOpen && (
+                <div
+                    className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+                    onClick={() => setMoreOpen(false)}
+                />
+            )}
+
+            <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[var(--app-bg)]/95 px-2 py-2 backdrop-blur-xl lg:hidden">
+                {moreOpen && (
+                    <div className="mx-auto mb-2 grid max-w-lg grid-cols-2 gap-1 border border-white/10 bg-[var(--app-surface)] p-2">
+                        {overflowItems.map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => goTo(item.id)}
+                                className={`flex items-center gap-2 px-3 py-3 text-left text-sm font-semibold transition ${section === item.id
+                                    ? 'bg-[var(--brand)] text-[var(--app-bg)]'
+                                    : 'text-[var(--app-muted)] hover:bg-white/[0.06]'
+                                    }`}
+                            >
+                                {item.icon}
+                                {item.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                <div
+                    className="mx-auto grid max-w-lg gap-1"
+                    style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+                >
+                    {primaryItems.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => goTo(item.id)}
+                            className={`px-2 py-3 text-[11px] font-semibold transition duration-200 active:scale-[0.98] ${section === item.id
+                                ? 'bg-[var(--brand)] text-[var(--app-bg)]'
+                                : 'text-[var(--app-muted)] hover:bg-white/[0.06]'
+                                }`}
+                        >
+                            <span className="flex flex-col items-center gap-1">
+                                {item.icon}
+                                {item.mobileLabel}
+                            </span>
+                        </button>
+                    ))}
+
+                    {overflowItems.length > 0 && (
+                        <button
+                            onClick={() => setMoreOpen((open) => !open)}
+                            className={`px-2 py-3 text-[11px] font-semibold transition duration-200 active:scale-[0.98] ${moreOpen || overflowItems.some((item) => item.id === section)
+                                ? 'bg-[var(--brand)] text-[var(--app-bg)]'
+                                : 'text-[var(--app-muted)] hover:bg-white/[0.06]'
+                                }`}
+                        >
+                            <span className="flex flex-col items-center gap-1">
+                                {moreOpen ? <X size={16} /> : <MoreHorizontal size={16} />}
+                                Más
+                            </span>
+                        </button>
+                    )}
+                </div>
+            </nav>
+        </>
     )
 }
 
@@ -952,6 +1084,10 @@ function AppointmentsSection({
     business,
     filter,
     setFilter,
+    workerFilter,
+    setWorkerFilter,
+    staffList,
+    isAdmin,
     updateAppointmentStatus,
     onReschedule,
     onOpenCalendar,
@@ -962,6 +1098,10 @@ function AppointmentsSection({
     business: any
     filter: AppointmentFilter
     setFilter: (filter: AppointmentFilter) => void
+    workerFilter: string
+    setWorkerFilter: (workerId: string) => void
+    staffList: Staff[]
+    isAdmin: boolean
     updateAppointmentStatus: (id: string, status: string) => void
     onReschedule: (appointment: any) => void
     onOpenCalendar: () => void
@@ -978,6 +1118,9 @@ function AppointmentsSection({
         { id: 'all', label: 'Todas' },
     ]
 
+    const bookableWorkers = staffList.filter((staff) => staff.is_worker && staff.is_active)
+    const selectedWorkerName = staffList.find((staff) => staff.id === workerFilter)?.full_name
+
     return (
         <section className="animate-fade-in">
             <SectionHeader
@@ -991,6 +1134,29 @@ function AppointmentsSection({
                     </button>
                 }
             />
+
+            {isAdmin && bookableWorkers.length > 0 && (
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                    <select
+                        value={workerFilter}
+                        onChange={(event) => setWorkerFilter(event.target.value)}
+                        className="admin-input w-auto"
+                    >
+                        <option value="all">Todos los barberos</option>
+                        {bookableWorkers.map((worker) => (
+                            <option key={worker.id} value={worker.id}>
+                                {worker.full_name}
+                            </option>
+                        ))}
+                    </select>
+
+                    {selectedWorkerName && (
+                        <span className="border border-[var(--brand)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
+                            Viendo: {selectedWorkerName}
+                        </span>
+                    )}
+                </div>
+            )}
 
             <div className="mt-6 overflow-x-auto border border-white/10 bg-[var(--app-surface)] p-3">
                 <div className="flex min-w-max gap-2">
@@ -2051,21 +2217,41 @@ function ScheduleSection({
             />
 
             {isAdmin && bookableWorkers.length > 0 && (
-                <div className="mt-6 overflow-x-auto border border-white/10 bg-[var(--app-surface)] p-3">
-                    <div className="flex min-w-max gap-2">
-                        {bookableWorkers.map((worker) => (
-                            <button
-                                key={worker.id}
-                                onClick={() => setSelectedWorkerId(worker.id)}
-                                className={`border px-4 py-2 text-sm font-semibold transition ${selectedWorkerId === worker.id
-                                    ? 'border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)]'
-                                    : 'border-white/10 text-[var(--app-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)]'
-                                    }`}
-                            >
-                                {worker.full_name}
-                            </button>
-                        ))}
+                <div className="mt-6 space-y-3">
+                    <div className="hidden overflow-x-auto border border-white/10 bg-[var(--app-surface)] p-3 lg:block">
+                        <div className="flex min-w-max gap-2">
+                            {bookableWorkers.map((worker) => (
+                                <button
+                                    key={worker.id}
+                                    onClick={() => setSelectedWorkerId(worker.id)}
+                                    className={`border px-4 py-2 text-sm font-semibold transition ${selectedWorkerId === worker.id
+                                        ? 'border-[var(--brand)] bg-[var(--brand)] text-[var(--app-bg)]'
+                                        : 'border-white/10 text-[var(--app-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)]'
+                                        }`}
+                                >
+                                    {worker.full_name}
+                                </button>
+                            ))}
+                        </div>
                     </div>
+
+                    <select
+                        value={selectedWorkerId}
+                        onChange={(event) => setSelectedWorkerId(event.target.value)}
+                        className="admin-input lg:hidden"
+                    >
+                        {bookableWorkers.map((worker) => (
+                            <option key={worker.id} value={worker.id}>
+                                {worker.full_name}
+                            </option>
+                        ))}
+                    </select>
+
+                    {selectedWorkerId && (
+                        <span className="inline-block border border-[var(--brand)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
+                            Viendo: {bookableWorkers.find((worker) => worker.id === selectedWorkerId)?.full_name}
+                        </span>
+                    )}
                 </div>
             )}
 
@@ -2336,6 +2522,48 @@ function StaffSection({
         ).length
     }
 
+    async function toggleActive(staff: Staff) {
+        const nextActive = !staff.is_active
+
+        if (!nextActive && staff.is_admin && remainingActiveAdmins(staff.id) === 0) {
+            notify('No se puede desactivar', 'Debe quedar al menos un administrador activo.', 'danger')
+            return
+        }
+
+        async function runToggle() {
+            const { error } = await supabase
+                .from('staff')
+                .update({ is_active: nextActive })
+                .eq('id', staff.id)
+
+            if (error) {
+                notify('No se pudo actualizar', 'Intenta nuevamente.', 'danger')
+                return
+            }
+
+            await reload()
+            notify(
+                nextActive ? 'Trabajador activado' : 'Trabajador desactivado',
+                nextActive
+                    ? 'Ya puede entrar al panel y recibir citas nuevas.'
+                    : 'Perdió acceso al panel y ya no aparece en la reserva pública.',
+                'success'
+            )
+        }
+
+        if (!nextActive) {
+            askConfirm({
+                title: 'Desactivar trabajador',
+                message: `${staff.full_name} perderá acceso al panel y no aparecerá en la reserva pública.`,
+                tone: 'danger',
+                onConfirm: runToggle,
+            })
+            return
+        }
+
+        await runToggle()
+    }
+
     async function deleteStaff(staff: Staff) {
         if (staff.is_admin && remainingActiveAdmins(staff.id) === 0) {
             notify('No se puede eliminar', 'Debe quedar al menos un administrador activo.', 'danger')
@@ -2391,6 +2619,9 @@ function StaffSection({
                     <ActiveBadge key="active" active={staff.is_active} />,
                     <RowActions key="actions">
                         <AdminButton onClick={() => openEditModal(staff)}>Editar</AdminButton>
+                        <AdminButton tone={staff.is_active ? 'danger' : 'success'} onClick={() => toggleActive(staff)}>
+                            {staff.is_active ? 'Desactivar' : 'Activar'}
+                        </AdminButton>
                         <AdminButton tone="danger" onClick={() => deleteStaff(staff)}>
                             Eliminar
                         </AdminButton>
@@ -2412,6 +2643,13 @@ function StaffSection({
                         <div className="mt-5 grid grid-cols-2 gap-2">
                             <AdminButton primary full onClick={() => openEditModal(staff)}>
                                 Editar
+                            </AdminButton>
+                            <AdminButton
+                                tone={staff.is_active ? 'danger' : 'success'}
+                                full
+                                onClick={() => toggleActive(staff)}
+                            >
+                                {staff.is_active ? 'Desactivar' : 'Activar'}
                             </AdminButton>
                             <AdminButton tone="danger" full onClick={() => deleteStaff(staff)}>
                                 Eliminar
@@ -2450,7 +2688,7 @@ function StaffFormModal({
     onSaved: AsyncVoid
 }) {
     const [fullName, setFullName] = useState(staff?.full_name || '')
-    const [authUserId, setAuthUserId] = useState(staff?.auth_user_id || '')
+    const [lookupEmail, setLookupEmail] = useState('')
     const [phone, setPhone] = useState(staff?.phone || '')
     const [telegramChatId, setTelegramChatId] = useState(staff?.telegram_chat_id || '')
     const [avatarUrl, setAvatarUrl] = useState(staff?.avatar_url || '')
@@ -2469,8 +2707,8 @@ function StaffFormModal({
             return
         }
 
-        if (!authUserId.trim()) {
-            setErrorMsg('El ID de usuario de Supabase Auth es obligatorio.')
+        if (!isEditing && !lookupEmail.trim()) {
+            setErrorMsg('El email de la cuenta es obligatorio.')
             return
         }
 
@@ -2489,9 +2727,8 @@ function StaffFormModal({
         setSaving(true)
         setErrorMsg('')
 
-        const payload = {
+        const basePayload = {
             full_name: fullName.trim(),
-            auth_user_id: authUserId.trim(),
             phone: phone.trim() || null,
             telegram_chat_id: telegramChatId.trim() || null,
             avatar_url: avatarUrl.trim() || null,
@@ -2501,9 +2738,42 @@ function StaffFormModal({
             sort_order: Number(sortOrder || 0),
         }
 
-        const { error } = isEditing && staff
-            ? await supabase.from('staff').update(payload).eq('id', staff.id)
-            : await supabase.from('staff').insert(payload)
+        if (isEditing && staff) {
+            const { error } = await supabase.from('staff').update(basePayload).eq('id', staff.id)
+
+            setSaving(false)
+
+            if (error) {
+                setErrorMsg(error.message)
+                return
+            }
+
+            await onSaved()
+            return
+        }
+
+        const { data: authUserId, error: lookupError } = await supabase.rpc(
+            'find_auth_user_id_by_email',
+            { lookup_email: lookupEmail.trim() }
+        )
+
+        if (lookupError) {
+            setSaving(false)
+            setErrorMsg('No se pudo buscar la cuenta. Intenta nuevamente.')
+            return
+        }
+
+        if (!authUserId) {
+            setSaving(false)
+            setErrorMsg(
+                'No se encontró ninguna cuenta con ese email. Créala primero en Supabase → Authentication → Users.'
+            )
+            return
+        }
+
+        const { error } = await supabase
+            .from('staff')
+            .insert({ ...basePayload, auth_user_id: authUserId })
 
         setSaving(false)
 
@@ -2541,21 +2811,38 @@ function StaffFormModal({
                         />
                     </FieldLabel>
 
-                    <div>
-                        <FieldLabel label="ID de usuario de Supabase Auth">
-                            <input
-                                value={authUserId}
-                                onChange={(event) => setAuthUserId(event.target.value)}
-                                className="admin-input disabled:opacity-50"
-                                placeholder="UUID de Authentication → Users"
-                                disabled={isEditing}
-                            />
-                        </FieldLabel>
-                        <p className="mt-2 text-xs text-[var(--app-muted)]">
-                            Búscalo en Supabase → Authentication → Users → copiar UID. La cuenta debe
-                            existir antes de crear aquí el perfil (los usuarios no se registran desde la web).
-                        </p>
-                    </div>
+                    {isEditing ? (
+                        <div>
+                            <FieldLabel label="Cuenta vinculada">
+                                <input
+                                    value={staff?.auth_user_id || ''}
+                                    className="admin-input opacity-50"
+                                    disabled
+                                />
+                            </FieldLabel>
+                            <p className="mt-2 text-xs text-[var(--app-muted)]">
+                                La cuenta vinculada no se puede cambiar desde aquí. Si esta persona
+                                cambió de email, crea un nuevo trabajador con la cuenta correcta.
+                            </p>
+                        </div>
+                    ) : (
+                        <div>
+                            <FieldLabel label="Email de la cuenta">
+                                <input
+                                    value={lookupEmail}
+                                    onChange={(event) => setLookupEmail(event.target.value)}
+                                    type="email"
+                                    className="admin-input"
+                                    placeholder="correo@ejemplo.com"
+                                />
+                            </FieldLabel>
+                            <p className="mt-2 text-xs text-[var(--app-muted)]">
+                                Debe ser el email con el que esta persona ya tiene cuenta en
+                                Supabase → Authentication → Users (los usuarios no se registran
+                                desde la web; esa cuenta debe existir primero).
+                            </p>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-3">
                         <FieldLabel label="Teléfono">
