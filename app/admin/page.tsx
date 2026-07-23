@@ -115,6 +115,19 @@ function recurringBreakLabel(days: number[]) {
     return sorted.map((day) => WEEK_DAYS[day - 1]).join(', ')
 }
 
+// Cualquier cancelacion iniciada desde el panel (manual, dia libre o
+// bloqueo) pasa por aqui, para que el barbero afectado siempre reciba la
+// misma alerta que ya recibe cuando el cliente cancela por su cuenta.
+function notifyCancellation(appointmentIds: string[], reason: string) {
+    if (appointmentIds.length === 0) return
+
+    fetch('/api/appointments/notify-cancellation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentIds, reason }),
+    }).catch(() => {})
+}
+
 function groupBreaks(breaks: any[]) {
     const singles = breaks.filter((item) => item.date)
     const recurringByGroup = new Map<string, any[]>()
@@ -374,6 +387,10 @@ export default function AdminPage() {
                 if (error) {
                     notify('No se pudo actualizar la cita', 'Intenta nuevamente.', 'danger')
                     return
+                }
+
+                if (status === 'cancelled') {
+                    notifyCancellation([id], 'Cancelada desde el panel')
                 }
 
                 await loadData()
@@ -2208,14 +2225,10 @@ function ScheduleSection({
 
                 await cancelQuery
 
-                fetch('/api/appointments/notify-cancellation', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        appointmentIds: appointmentsInDay.map((appointment: any) => appointment.id),
-                        reason: newDayOffReason.trim(),
-                    }),
-                }).catch(() => {})
+                notifyCancellation(
+                    appointmentsInDay.map((appointment: any) => appointment.id),
+                    newDayOffReason.trim()
+                )
             }
 
             setLoading(false)
@@ -3809,14 +3822,10 @@ function BreakFormModal({
                     return
                 }
 
-                fetch('/api/appointments/notify-cancellation', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        appointmentIds: appointmentsToCancel.map((appointment) => appointment.id),
-                        reason: name.trim(),
-                    }),
-                }).catch(() => {})
+                notifyCancellation(
+                    appointmentsToCancel.map((appointment) => appointment.id),
+                    name.trim()
+                )
             }
 
             setSaving(false)
